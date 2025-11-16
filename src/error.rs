@@ -134,10 +134,13 @@ impl IntoResponse for GatewayError {
                 });
                 (
                     StatusCode::METHOD_NOT_ALLOWED,
-                    ErrorResponse::new("method_not_allowed", "Method not allowed for this resource")
-                        .with_details(details),
+                    ErrorResponse::new(
+                        "method_not_allowed",
+                        "Method not allowed for this resource",
+                    )
+                    .with_details(details),
                 )
-            },
+            }
             GatewayError::ConnectionTimeout => (
                 StatusCode::REQUEST_TIMEOUT,
                 ErrorResponse::new("request_timeout", "Connection timeout"),
@@ -219,7 +222,10 @@ impl IntoResponse for GatewayError {
                 });
                 let error_response = ErrorResponse::new(
                     "rate_limit_exceeded",
-                    &format!("Rate limit exceeded. Please retry after {} seconds.", retry_after_secs),
+                    &format!(
+                        "Rate limit exceeded. Please retry after {} seconds.",
+                        retry_after_secs
+                    ),
                 )
                 .with_details(details);
 

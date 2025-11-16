@@ -362,8 +362,7 @@ fn test_user_context_serialization() {
     };
 
     let json = serde_json::to_string(&user_context).expect("Failed to serialize");
-    let deserialized: UserContext =
-        serde_json::from_str(&json).expect("Failed to deserialize");
+    let deserialized: UserContext = serde_json::from_str(&json).expect("Failed to deserialize");
 
     assert_eq!(user_context.user_id, deserialized.user_id);
     assert_eq!(user_context.username, deserialized.username);
@@ -376,13 +375,7 @@ fn test_invalid_token_signature() {
     let secret = "correct-secret";
     let wrong_secret = "wrong-secret";
 
-    let token = create_test_token(
-        "user123",
-        vec!["user".to_string()],
-        vec![],
-        secret,
-        false,
-    );
+    let token = create_test_token("user123", vec!["user".to_string()], vec![], secret, false);
 
     let auth_config = AuthConfig {
         jwt_secret: Some(wrong_secret.to_string()),

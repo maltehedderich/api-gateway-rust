@@ -64,11 +64,9 @@ impl Server {
     /// Build the application router with middleware
     fn build_app(&self) -> Router {
         // Create the gateway router from configuration
-        let gateway_router = GatewayRouter::from_config(
-            self.config.routes.clone(),
-            self.config.upstreams.clone(),
-        )
-        .expect("Failed to create gateway router");
+        let gateway_router =
+            GatewayRouter::from_config(self.config.routes.clone(), self.config.upstreams.clone())
+                .expect("Failed to create gateway router");
 
         // Determine pool size (use first upstream's config or default)
         let pool_size = self
@@ -88,9 +86,8 @@ impl Server {
         // Create rate limiter if rate limiting is configured
         let rate_limiter = if let Some(ref rate_limiting_config) = self.config.rate_limiting {
             match tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    RateLimiter::new(rate_limiting_config.clone()).await
-                })
+                tokio::runtime::Handle::current()
+                    .block_on(async { RateLimiter::new(rate_limiting_config.clone()).await })
             }) {
                 Ok(limiter) => {
                     info!("Rate limiter initialized successfully");
@@ -212,23 +209,19 @@ async fn load_tls_config(tls_config: &TlsConfig) -> Result<RustlsConfig, Gateway
     info!("Loading TLS private key from: {:?}", tls_config.key_path);
 
     // Read certificate and key files
-    let cert_data = tokio::fs::read(&tls_config.cert_path)
-        .await
-        .map_err(|e| {
-            GatewayError::TlsConfig(format!(
-                "Failed to read certificate file {:?}: {}",
-                tls_config.cert_path, e
-            ))
-        })?;
+    let cert_data = tokio::fs::read(&tls_config.cert_path).await.map_err(|e| {
+        GatewayError::TlsConfig(format!(
+            "Failed to read certificate file {:?}: {}",
+            tls_config.cert_path, e
+        ))
+    })?;
 
-    let key_data = tokio::fs::read(&tls_config.key_path)
-        .await
-        .map_err(|e| {
-            GatewayError::TlsConfig(format!(
-                "Failed to read key file {:?}: {}",
-                tls_config.key_path, e
-            ))
-        })?;
+    let key_data = tokio::fs::read(&tls_config.key_path).await.map_err(|e| {
+        GatewayError::TlsConfig(format!(
+            "Failed to read key file {:?}: {}",
+            tls_config.key_path, e
+        ))
+    })?;
 
     // Parse certificates
     let certs = rustls_pemfile::certs(&mut cert_data.as_slice())
