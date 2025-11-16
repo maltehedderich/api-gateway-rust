@@ -12,6 +12,8 @@ pub struct Config {
     pub upstreams: Vec<UpstreamConfig>,
     #[serde(default)]
     pub auth: Option<AuthConfig>,
+    #[serde(default)]
+    pub rate_limiting: Option<RateLimitingConfig>,
 }
 
 /// Server configuration
@@ -92,6 +94,64 @@ fn default_cookie_name() -> String {
     "session_token".to_string()
 }
 
+/// Rate limiting configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitingConfig {
+    /// Redis connection URL (e.g., "redis://localhost:6379")
+    pub redis_url: String,
+
+    /// Global default rate limit (applied if no route-specific limit is configured)
+    #[serde(default)]
+    pub default_limit: Option<RateLimitPolicy>,
+
+    /// Failure mode when Redis is unavailable
+    /// - "fail_open": Allow requests to proceed (log warning)
+    /// - "fail_closed": Reject requests with 503 Service Unavailable
+    #[serde(default = "default_failure_mode")]
+    pub failure_mode: String,
+}
+
+fn default_failure_mode() -> String {
+    "fail_closed".to_string()
+}
+
+/// Rate limit policy definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitPolicy {
+    /// Maximum number of requests allowed
+    pub limit: u64,
+
+    /// Time window in seconds
+    pub window_secs: u64,
+
+    /// Rate limiting algorithm
+    /// - "token_bucket": Token bucket algorithm (allows bursts)
+    /// - "sliding_window": Sliding window counter algorithm (strict)
+    #[serde(default = "default_algorithm")]
+    pub algorithm: String,
+
+    /// Burst capacity for token bucket algorithm (defaults to limit if not specified)
+    #[serde(default)]
+    pub burst_capacity: Option<u64>,
+
+    /// Key type for rate limiting
+    /// - "ip": Rate limit by client IP address
+    /// - "user": Rate limit by authenticated user ID
+    /// - "endpoint": Rate limit by route/endpoint
+    /// - "user_endpoint": Composite key (user + endpoint)
+    /// - "ip_endpoint": Composite key (IP + endpoint)
+    #[serde(default = "default_key_type")]
+    pub key_type: String,
+}
+
+fn default_algorithm() -> String {
+    "token_bucket".to_string()
+}
+
+fn default_key_type() -> String {
+    "ip".to_string()
+}
+
 // Default values
 fn default_bind_address() -> String {
     "0.0.0.0".to_string()
@@ -137,6 +197,7 @@ impl Default for Config {
             routes: Vec::new(),
             upstreams: Vec::new(),
             auth: None,
+            rate_limiting: None,
         }
     }
 }
@@ -179,6 +240,10 @@ pub struct RouteConfig {
     /// Required permissions for authorization (PBAC - all permissions required)
     #[serde(default)]
     pub required_permissions: Vec<String>,
+
+    /// Rate limit policy for this route (overrides global default)
+    #[serde(default)]
+    pub rate_limit: Option<RateLimitPolicy>,
 }
 
 /// Upstream service configuration
@@ -404,6 +469,79 @@ impl Config {
                 return Err(GatewayError::Config(format!(
                     "Route '{}' references unknown upstream '{}'",
                     route.id, route.upstream_id
+                )));
+            }
+
+            // Validate rate limit policy if present
+            if let Some(ref rate_limit) = route.rate_limit {
+                Self::validate_rate_limit_policy(rate_limit, &format!("Route '{}'", route.id))?;
+            }
+        }
+
+        // Validate rate limiting configuration
+        if let Some(ref rate_limiting) = self.rate_limiting {
+            if rate_limiting.redis_url.is_empty() {
+                return Err(GatewayError::Config(
+                    "Rate limiting Redis URL cannot be empty".to_string(),
+                ));
+            }
+
+            if !rate_limiting.redis_url.starts_with("redis://")
+                && !rate_limiting.redis_url.starts_with("rediss://") {
+                return Err(GatewayError::Config(
+                    "Rate limiting Redis URL must start with redis:// or rediss://".to_string(),
+                ));
+            }
+
+            if rate_limiting.failure_mode != "fail_open" && rate_limiting.failure_mode != "fail_closed" {
+                return Err(GatewayError::Config(format!(
+                    "Invalid failure mode: {}. Must be 'fail_open' or 'fail_closed'",
+                    rate_limiting.failure_mode
+                )));
+            }
+
+            if let Some(ref default_limit) = rate_limiting.default_limit {
+                Self::validate_rate_limit_policy(default_limit, "Global default rate limit")?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_rate_limit_policy(policy: &RateLimitPolicy, context: &str) -> Result<(), GatewayError> {
+        if policy.limit == 0 {
+            return Err(GatewayError::Config(format!(
+                "{}: Rate limit must be greater than 0",
+                context
+            )));
+        }
+
+        if policy.window_secs == 0 {
+            return Err(GatewayError::Config(format!(
+                "{}: Window duration must be greater than 0",
+                context
+            )));
+        }
+
+        if !["token_bucket", "sliding_window"].contains(&policy.algorithm.as_str()) {
+            return Err(GatewayError::Config(format!(
+                "{}: Invalid algorithm '{}'. Must be 'token_bucket' or 'sliding_window'",
+                context, policy.algorithm
+            )));
+        }
+
+        if !["ip", "user", "endpoint", "user_endpoint", "ip_endpoint"].contains(&policy.key_type.as_str()) {
+            return Err(GatewayError::Config(format!(
+                "{}: Invalid key type '{}'. Must be one of: ip, user, endpoint, user_endpoint, ip_endpoint",
+                context, policy.key_type
+            )));
+        }
+
+        if let Some(burst) = policy.burst_capacity {
+            if burst == 0 {
+                return Err(GatewayError::Config(format!(
+                    "{}: Burst capacity must be greater than 0 if specified",
+                    context
                 )));
             }
         }

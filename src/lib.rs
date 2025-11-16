@@ -4,6 +4,7 @@ pub mod error;
 pub mod handler;
 pub mod metrics;
 pub mod middleware;
+pub mod rate_limiter;
 pub mod routing;
 pub mod server;
 pub mod upstream;

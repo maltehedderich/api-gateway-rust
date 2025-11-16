@@ -113,6 +113,42 @@ routes:
     auth_required: true
     required_permissions: ["products:write", "products:delete"]
 
+  # Route with rate limiting (per IP)
+  - id: "search-products"
+    methods: ["GET"]
+    path: "/api/products/search"
+    upstream_id: "product-service"
+    rate_limit:
+      limit: 100  # 100 requests
+      window_secs: 60  # per minute
+      algorithm: "token_bucket"
+      key_type: "ip"  # Per client IP
+
+  # Route with strict rate limiting (per user, sliding window)
+  - id: "create-order-limited"
+    methods: ["POST"]
+    path: "/api/orders/create"
+    upstream_id: "order-service"
+    auth_required: true
+    rate_limit:
+      limit: 10  # 10 requests
+      window_secs: 60  # per minute
+      algorithm: "sliding_window"  # Strict enforcement
+      key_type: "user"  # Per authenticated user
+
+  # Route with composite rate limiting (user + endpoint)
+  - id: "expensive-report"
+    methods: ["POST"]
+    path: "/api/reports/expensive"
+    upstream_id: "product-service"
+    auth_required: true
+    timeout_secs: 300  # 5 minutes
+    rate_limit:
+      limit: 5  # 5 requests
+      window_secs: 3600  # per hour
+      algorithm: "sliding_window"
+      key_type: "user_endpoint"  # Per user per endpoint
+
 # Authentication configuration (optional - if not provided, authentication is disabled)
 # NOTE: For production, load secrets from environment variables instead of config file
 auth:
@@ -138,3 +174,38 @@ auth:
 
   # JWT audience claim validation (optional - validates 'aud' claim)
   # jwt_audience: "api-gateway"
+
+# Rate limiting configuration (optional - if not provided, rate limiting is disabled)
+# NOTE: Requires Redis to be running and accessible
+# rate_limiting:
+#   # Redis connection URL
+#   redis_url: "redis://localhost:6379"
+#
+#   # Failure mode when Redis is unavailable
+#   # - "fail_closed": Reject requests with 503 Service Unavailable (secure, default)
+#   # - "fail_open": Allow requests to proceed (high availability)
+#   failure_mode: "fail_closed"
+#
+#   # Global default rate limit (applied to routes without specific rate limits)
+#   default_limit:
+#     # Maximum number of requests allowed
+#     limit: 1000
+#
+#     # Time window in seconds
+#     window_secs: 3600  # 1 hour
+#
+#     # Rate limiting algorithm
+#     # - "token_bucket": Allows bursts (default)
+#     # - "sliding_window": Strict limit enforcement
+#     algorithm: "token_bucket"
+#
+#     # Burst capacity for token bucket (optional, defaults to limit)
+#     burst_capacity: 1000
+#
+#     # Key type for rate limiting
+#     # - "ip": Rate limit by client IP address
+#     # - "user": Rate limit by authenticated user ID
+#     # - "endpoint": Rate limit by route/endpoint
+#     # - "user_endpoint": Composite (user + endpoint)
+#     # - "ip_endpoint": Composite (IP + endpoint)
+#     key_type: "ip"

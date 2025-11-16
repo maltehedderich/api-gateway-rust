@@ -1,4 +1,4 @@
-use crate::config::{RouteConfig, UpstreamConfig};
+use crate::config::{RateLimitPolicy, RouteConfig, UpstreamConfig};
 use crate::error::GatewayError;
 use axum::http::{Method, Uri};
 use std::collections::HashMap;
@@ -25,6 +25,7 @@ pub struct Route {
     pub auth_required: bool,
     pub required_roles: Vec<String>,
     pub required_permissions: Vec<String>,
+    pub rate_limit: Option<RateLimitPolicy>,
 }
 
 /// Path pattern for route matching
@@ -108,6 +109,7 @@ impl Router {
                 auth_required: route_config.auth_required,
                 required_roles: route_config.required_roles,
                 required_permissions: route_config.required_permissions,
+                rate_limit: route_config.rate_limit,
             });
         }
 

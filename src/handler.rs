@@ -2,16 +2,17 @@ use crate::auth::validate_jwt_token;
 use crate::config::AuthConfig;
 use crate::error::GatewayError;
 use crate::metrics::{
-    record_auth_error, record_auth_failure, record_auth_success, record_authz_decision,
+    self, record_auth_error, record_auth_failure, record_auth_success, record_authz_decision,
     DurationTimer, AUTH_DURATION_SECONDS, AUTHZ_DURATION_SECONDS,
 };
-use crate::middleware::CorrelationId;
+use crate::middleware::{ClientIp, CorrelationId};
+use crate::rate_limiter::{add_rate_limit_headers, RateLimitContext, RateLimiter};
 use crate::routing::Router;
 use crate::upstream::{build_upstream_uri, UpstreamClient};
 use axum::{
     extract::{Request, State},
     http::header,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -22,6 +23,7 @@ pub struct AppState {
     pub router: Router,
     pub upstream_client: UpstreamClient,
     pub auth_config: Option<Arc<AuthConfig>>,
+    pub rate_limiter: Option<RateLimiter>,
 }
 
 /// Main request handler that routes and forwards requests to upstream services
@@ -197,6 +199,106 @@ pub async fn handle_request(
                     user_id = %user.user_id,
                     "Authorization successful"
                 );
+            }
+
+            // Rate limiting check
+            if let Some(ref rate_limiter) = state.rate_limiter {
+                // Determine which rate limit policy to use (route-specific or global)
+                let rate_limit_policy = route.rate_limit.as_ref().or_else(|| {
+                    // Try to get global default policy
+                    // Note: We would need to store this in AppState, but for now we'll just skip if no route policy
+                    None
+                });
+
+                if let Some(policy) = rate_limit_policy {
+                    let rate_limit_timer = DurationTimer::new();
+
+                    // Extract client IP
+                    let client_ip = request
+                        .extensions()
+                        .get::<ClientIp>()
+                        .map(|ip| ip.0.clone())
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    // Extract user ID from user context
+                    let user_id = user_context.as_ref().map(|u| u.user_id.clone());
+
+                    // Construct rate limit context
+                    let rate_limit_ctx = RateLimitContext {
+                        client_ip: client_ip.clone(),
+                        user_id: user_id.clone(),
+                        route_id: route.id.clone(),
+                    };
+
+                    debug!(
+                        correlation_id = %correlation_id,
+                        route_id = %route.id,
+                        client_ip = %client_ip,
+                        user_id = ?user_id,
+                        "Checking rate limit"
+                    );
+
+                    // Check rate limit
+                    let decision = match rate_limiter.check_limit(&rate_limit_ctx, policy).await {
+                        Ok(decision) => decision,
+                        Err(e) => {
+                            error!(
+                                correlation_id = %correlation_id,
+                                route_id = %route.id,
+                                error = %e,
+                                "Rate limit check failed"
+                            );
+                            rate_limit_timer.observe_duration(
+                                &metrics::RATE_LIMIT_DURATION_SECONDS,
+                                &["check_failed"],
+                            );
+                            return Err(e);
+                        }
+                    };
+
+                    // Record metrics
+                    metrics::record_rate_limit_decision(
+                        decision.allowed,
+                        &route.id,
+                        &policy.key_type,
+                    );
+                    rate_limit_timer.observe_duration(
+                        &metrics::RATE_LIMIT_DURATION_SECONDS,
+                        &["check"],
+                    );
+
+                    if !decision.allowed {
+                        // Rate limit exceeded
+                        warn!(
+                            correlation_id = %correlation_id,
+                            route_id = %route.id,
+                            client_ip = %client_ip,
+                            user_id = ?user_id,
+                            current_count = decision.current_count,
+                            limit = decision.limit,
+                            "Rate limit exceeded"
+                        );
+
+                        let error = GatewayError::RateLimitExceeded {
+                            limit: decision.limit,
+                            window_secs: policy.window_secs,
+                            reset_at: decision.reset_at,
+                            retry_after_secs: decision.retry_after_secs,
+                        };
+
+                        let mut response = error.into_response();
+                        add_rate_limit_headers(response.headers_mut(), &decision);
+                        return Ok(response);
+                    }
+
+                    info!(
+                        correlation_id = %correlation_id,
+                        route_id = %route.id,
+                        remaining = decision.remaining,
+                        limit = decision.limit,
+                        "Rate limit check passed"
+                    );
+                }
             }
 
             // Build upstream URI
