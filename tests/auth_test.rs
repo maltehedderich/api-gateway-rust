@@ -140,7 +140,10 @@ fn test_invalid_signature() {
 
     // Try to validate with different secret - should fail
     let result = validate_jwt_token(&token, &auth_config);
-    assert!(result.is_err(), "Token with invalid signature should fail validation");
+    assert!(
+        result.is_err(),
+        "Token with invalid signature should fail validation"
+    );
 }
 
 #[test]
@@ -209,5 +212,8 @@ fn test_token_with_issuer_validation() {
     .expect("Failed to encode token");
 
     let result = validate_jwt_token(&token_wrong_issuer, &auth_config);
-    assert!(result.is_err(), "Token with wrong issuer should fail validation");
+    assert!(
+        result.is_err(),
+        "Token with wrong issuer should fail validation"
+    );
 }

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Main configuration for the API Gateway
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub server: ServerConfig,
     #[serde(default)]
@@ -186,18 +186,6 @@ impl Default for ServerConfig {
             connection_timeout_secs: default_connection_timeout(),
             max_connections: default_max_connections(),
             request_timeout_secs: default_request_timeout(),
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            routes: Vec::new(),
-            upstreams: Vec::new(),
-            auth: None,
-            rate_limiting: None,
         }
     }
 }
@@ -436,7 +424,9 @@ impl Config {
             }
 
             // Validate URL format
-            if !upstream.base_url.starts_with("http://") && !upstream.base_url.starts_with("https://") {
+            if !upstream.base_url.starts_with("http://")
+                && !upstream.base_url.starts_with("https://")
+            {
                 return Err(GatewayError::Config(format!(
                     "Upstream '{}' base_url must start with http:// or https://",
                     upstream.id
@@ -487,13 +477,16 @@ impl Config {
             }
 
             if !rate_limiting.redis_url.starts_with("redis://")
-                && !rate_limiting.redis_url.starts_with("rediss://") {
+                && !rate_limiting.redis_url.starts_with("rediss://")
+            {
                 return Err(GatewayError::Config(
                     "Rate limiting Redis URL must start with redis:// or rediss://".to_string(),
                 ));
             }
 
-            if rate_limiting.failure_mode != "fail_open" && rate_limiting.failure_mode != "fail_closed" {
+            if rate_limiting.failure_mode != "fail_open"
+                && rate_limiting.failure_mode != "fail_closed"
+            {
                 return Err(GatewayError::Config(format!(
                     "Invalid failure mode: {}. Must be 'fail_open' or 'fail_closed'",
                     rate_limiting.failure_mode
@@ -508,7 +501,10 @@ impl Config {
         Ok(())
     }
 
-    fn validate_rate_limit_policy(policy: &RateLimitPolicy, context: &str) -> Result<(), GatewayError> {
+    fn validate_rate_limit_policy(
+        policy: &RateLimitPolicy,
+        context: &str,
+    ) -> Result<(), GatewayError> {
         if policy.limit == 0 {
             return Err(GatewayError::Config(format!(
                 "{}: Rate limit must be greater than 0",
@@ -530,7 +526,9 @@ impl Config {
             )));
         }
 
-        if !["ip", "user", "endpoint", "user_endpoint", "ip_endpoint"].contains(&policy.key_type.as_str()) {
+        if !["ip", "user", "endpoint", "user_endpoint", "ip_endpoint"]
+            .contains(&policy.key_type.as_str())
+        {
             return Err(GatewayError::Config(format!(
                 "{}: Invalid key type '{}'. Must be one of: ip, user, endpoint, user_endpoint, ip_endpoint",
                 context, policy.key_type

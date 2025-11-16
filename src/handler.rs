@@ -3,7 +3,7 @@ use crate::config::AuthConfig;
 use crate::error::GatewayError;
 use crate::metrics::{
     self, record_auth_error, record_auth_failure, record_auth_success, record_authz_decision,
-    DurationTimer, AUTH_DURATION_SECONDS, AUTHZ_DURATION_SECONDS,
+    DurationTimer, AUTHZ_DURATION_SECONDS, AUTH_DURATION_SECONDS,
 };
 use crate::middleware::{ClientIp, CorrelationId};
 use crate::rate_limiter::{add_rate_limit_headers, RateLimitContext, RateLimiter};
@@ -93,9 +93,7 @@ pub async fn handle_request(
                         "Authentication required but auth config not found"
                     );
                     record_auth_error();
-                    GatewayError::AuthenticationFailed(
-                        "Authentication not configured".to_string(),
-                    )
+                    GatewayError::AuthenticationFailed("Authentication not configured".to_string())
                 })?;
 
                 let user = validate_jwt_token(&token, auth_config).map_err(|e| {
@@ -204,11 +202,8 @@ pub async fn handle_request(
             // Rate limiting check
             if let Some(ref rate_limiter) = state.rate_limiter {
                 // Determine which rate limit policy to use (route-specific or global)
-                let rate_limit_policy = route.rate_limit.as_ref().or_else(|| {
-                    // Try to get global default policy
-                    // Note: We would need to store this in AppState, but for now we'll just skip if no route policy
-                    None
-                });
+                // Note: We would need to store global default policy in AppState, but for now we'll just use route policy
+                let rate_limit_policy = route.rate_limit.as_ref();
 
                 if let Some(policy) = rate_limit_policy {
                     let rate_limit_timer = DurationTimer::new();
@@ -262,10 +257,8 @@ pub async fn handle_request(
                         &route.id,
                         &policy.key_type,
                     );
-                    rate_limit_timer.observe_duration(
-                        &metrics::RATE_LIMIT_DURATION_SECONDS,
-                        &["check"],
-                    );
+                    rate_limit_timer
+                        .observe_duration(&metrics::RATE_LIMIT_DURATION_SECONDS, &["check"]);
 
                     if !decision.allowed {
                         // Rate limit exceeded

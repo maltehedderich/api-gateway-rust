@@ -1,11 +1,6 @@
 use crate::config::AuthConfig;
 use crate::error::GatewayError;
-use axum::{
-    extract::Request,
-    http::header,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::header, middleware::Next, response::Response};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -189,11 +184,9 @@ pub fn validate_jwt_token(
     }
 
     // Decode and validate token
-    let token_data = decode::<Claims>(token, &decoding_key, &validation).map_err(|e| {
-        match e.kind() {
-            jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                GatewayError::TokenExpired
-            }
+    let token_data =
+        decode::<Claims>(token, &decoding_key, &validation).map_err(|e| match e.kind() {
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => GatewayError::TokenExpired,
             jsonwebtoken::errors::ErrorKind::InvalidSignature => {
                 GatewayError::InvalidToken("Invalid signature".to_string())
             }
@@ -204,8 +197,7 @@ pub fn validate_jwt_token(
                 GatewayError::InvalidToken("Invalid audience".to_string())
             }
             _ => GatewayError::InvalidToken(format!("Token validation failed: {}", e)),
-        }
-    })?;
+        })?;
 
     Ok(token_data.claims.into())
 }
@@ -293,18 +285,15 @@ pub async fn authorization_middleware(
         .unwrap_or_else(|| "unknown".to_string());
 
     // Extract user context (should be present if authentication succeeded)
-    let user_context = request
-        .extensions()
-        .get::<UserContext>()
-        .ok_or_else(|| {
-            error!(
-                correlation_id = %correlation_id,
-                "Authorization failed: user context not found (authentication missing?)"
-            );
-            GatewayError::AuthenticationFailed(
-                "User context not found. Authentication required.".to_string(),
-            )
-        })?;
+    let user_context = request.extensions().get::<UserContext>().ok_or_else(|| {
+        error!(
+            correlation_id = %correlation_id,
+            "Authorization failed: user context not found (authentication missing?)"
+        );
+        GatewayError::AuthenticationFailed(
+            "User context not found. Authentication required.".to_string(),
+        )
+    })?;
 
     debug!(
         correlation_id = %correlation_id,

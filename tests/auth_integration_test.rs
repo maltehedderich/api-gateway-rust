@@ -238,7 +238,7 @@ fn test_rbac_authorization() {
         extra: serde_json::json!({}),
     };
 
-    let required_roles = vec!["admin".to_string()];
+    let required_roles = ["admin".to_string()];
 
     // User has admin role, should pass
     let has_role = user_context
@@ -277,7 +277,7 @@ fn test_pbac_authorization() {
         extra: serde_json::json!({}),
     };
 
-    let required_permissions = vec!["orders:create".to_string()];
+    let required_permissions = ["orders:create".to_string()];
 
     // User has required permission
     let has_all = required_permissions
@@ -286,7 +286,7 @@ fn test_pbac_authorization() {
     assert!(has_all, "User should have required permission");
 
     // Test user without all required permissions
-    let required_multiple = vec!["orders:create".to_string(), "orders:delete".to_string()];
+    let required_multiple = ["orders:create".to_string(), "orders:delete".to_string()];
 
     let has_all = required_multiple
         .iter()
@@ -308,8 +308,8 @@ fn test_combined_rbac_and_pbac() {
         extra: serde_json::json!({}),
     };
 
-    let required_roles = vec!["admin".to_string()];
-    let required_permissions = vec!["data:delete".to_string()];
+    let required_roles = ["admin".to_string()];
+    let required_permissions = ["data:delete".to_string()];
 
     let has_role = user_context
         .roles
@@ -362,8 +362,7 @@ fn test_user_context_serialization() {
     };
 
     let json = serde_json::to_string(&user_context).expect("Failed to serialize");
-    let deserialized: UserContext =
-        serde_json::from_str(&json).expect("Failed to deserialize");
+    let deserialized: UserContext = serde_json::from_str(&json).expect("Failed to deserialize");
 
     assert_eq!(user_context.user_id, deserialized.user_id);
     assert_eq!(user_context.username, deserialized.username);
@@ -376,13 +375,7 @@ fn test_invalid_token_signature() {
     let secret = "correct-secret";
     let wrong_secret = "wrong-secret";
 
-    let token = create_test_token(
-        "user123",
-        vec!["user".to_string()],
-        vec![],
-        secret,
-        false,
-    );
+    let token = create_test_token("user123", vec!["user".to_string()], vec![], secret, false);
 
     let auth_config = AuthConfig {
         jwt_secret: Some(wrong_secret.to_string()),

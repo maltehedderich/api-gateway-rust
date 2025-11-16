@@ -7,7 +7,6 @@
 /// - RBAC (Role-Based Access Control)
 /// - PBAC (Permission-Based Access Control)
 /// - Error handling and responses
-
 use api_gateway_rust::auth::validate_jwt_token;
 use api_gateway_rust::config::{AuthConfig, RouteConfig, UpstreamConfig};
 use api_gateway_rust::routing::Router;
@@ -28,12 +27,7 @@ struct TestClaims {
 }
 
 /// Helper to create a test token with specific roles and permissions
-fn create_token(
-    user_id: &str,
-    roles: Vec<&str>,
-    permissions: Vec<&str>,
-    secret: &str,
-) -> String {
+fn create_token(user_id: &str, roles: Vec<&str>, permissions: Vec<&str>, secret: &str) -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -80,20 +74,17 @@ fn test_e2e_rbac_authorization_success() {
     let token = create_token("admin_user", vec!["admin", "user"], vec![], secret);
 
     // Validate token and extract user context
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has admin role (RBAC)
-    let required_roles = vec!["admin".to_string()];
+    let required_roles = ["admin".to_string()];
     let has_role = user_context
         .roles
         .iter()
         .any(|role| required_roles.contains(role));
 
-    assert!(
-        has_role,
-        "Admin user should be authorized for admin route"
-    );
+    assert!(has_role, "Admin user should be authorized for admin route");
     assert_eq!(user_context.user_id, "admin_user");
     assert!(user_context.roles.contains(&"admin".to_string()));
 }
@@ -108,11 +99,11 @@ fn test_e2e_rbac_authorization_failure() {
     let token = create_token("regular_user", vec!["user"], vec![], secret);
 
     // Validate token
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has admin role (should fail)
-    let required_roles = vec!["admin".to_string()];
+    let required_roles = ["admin".to_string()];
     let has_role = user_context
         .roles
         .iter()
@@ -139,19 +130,16 @@ fn test_e2e_pbac_authorization_success() {
     );
 
     // Validate token
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has required permission (PBAC)
-    let required_permissions = vec!["orders:create".to_string()];
+    let required_permissions = ["orders:create".to_string()];
     let has_all_permissions = required_permissions
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
 
-    assert!(
-        has_all_permissions,
-        "User should have required permission"
-    );
+    assert!(has_all_permissions, "User should have required permission");
 }
 
 #[test]
@@ -169,11 +157,11 @@ fn test_e2e_pbac_authorization_failure() {
     );
 
     // Validate token
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has delete permission (should fail)
-    let required_permissions = vec!["orders:delete".to_string()];
+    let required_permissions = ["orders:delete".to_string()];
     let has_all_permissions = required_permissions
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
@@ -191,20 +179,15 @@ fn test_e2e_combined_rbac_and_pbac_success() {
     let auth_config = create_auth_config(secret);
 
     // Create a token with admin role and delete permission
-    let token = create_token(
-        "admin123",
-        vec!["admin"],
-        vec!["users:delete"],
-        secret,
-    );
+    let token = create_token("admin123", vec!["admin"], vec!["users:delete"], secret);
 
     // Validate token
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check both role and permission
-    let required_roles = vec!["admin".to_string()];
-    let required_permissions = vec!["users:delete".to_string()];
+    let required_roles = ["admin".to_string()];
+    let required_permissions = ["users:delete".to_string()];
 
     let has_role = user_context
         .roles
@@ -227,20 +210,15 @@ fn test_e2e_combined_rbac_and_pbac_failure_missing_role() {
     let auth_config = create_auth_config(secret);
 
     // Create a token without admin role
-    let token = create_token(
-        "user123",
-        vec!["user"],
-        vec!["users:delete"],
-        secret,
-    );
+    let token = create_token("user123", vec!["user"], vec!["users:delete"], secret);
 
     // Validate token
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check both role and permission
-    let required_roles = vec!["admin".to_string()];
-    let required_permissions = vec!["users:delete".to_string()];
+    let required_roles = ["admin".to_string()];
+    let required_permissions = ["users:delete".to_string()];
 
     let has_role = user_context
         .roles
@@ -250,18 +228,9 @@ fn test_e2e_combined_rbac_and_pbac_failure_missing_role() {
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
 
-    assert!(
-        !has_role,
-        "User should NOT have required role"
-    );
-    assert!(
-        has_permissions,
-        "User should have required permission"
-    );
-    assert!(
-        !(has_role && has_permissions),
-        "Combined check should fail"
-    );
+    assert!(!has_role, "User should NOT have required role");
+    assert!(has_permissions, "User should have required permission");
+    assert!(!(has_role && has_permissions), "Combined check should fail");
 }
 
 #[test]
@@ -271,20 +240,15 @@ fn test_e2e_combined_rbac_and_pbac_failure_missing_permission() {
     let auth_config = create_auth_config(secret);
 
     // Create a token with admin role but no delete permission
-    let token = create_token(
-        "admin123",
-        vec!["admin"],
-        vec!["users:read"],
-        secret,
-    );
+    let token = create_token("admin123", vec!["admin"], vec!["users:read"], secret);
 
     // Validate token
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check both role and permission
-    let required_roles = vec!["admin".to_string()];
-    let required_permissions = vec!["users:delete".to_string()];
+    let required_roles = ["admin".to_string()];
+    let required_permissions = ["users:delete".to_string()];
 
     let has_role = user_context
         .roles
@@ -294,18 +258,9 @@ fn test_e2e_combined_rbac_and_pbac_failure_missing_permission() {
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
 
-    assert!(
-        has_role,
-        "User should have required role"
-    );
-    assert!(
-        !has_permissions,
-        "User should NOT have required permission"
-    );
-    assert!(
-        !(has_role && has_permissions),
-        "Combined check should fail"
-    );
+    assert!(has_role, "User should have required role");
+    assert!(!has_permissions, "User should NOT have required permission");
+    assert!(!(has_role && has_permissions), "Combined check should fail");
 }
 
 #[test]
@@ -315,19 +270,14 @@ fn test_e2e_multiple_roles_any_match() {
     let auth_config = create_auth_config(secret);
 
     // Create a token with moderator role (not admin)
-    let token = create_token(
-        "mod_user",
-        vec!["moderator", "user"],
-        vec![],
-        secret,
-    );
+    let token = create_token("mod_user", vec!["moderator", "user"], vec![], secret);
 
     // Validate token
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has admin OR moderator role (any match)
-    let required_roles = vec!["admin".to_string(), "moderator".to_string()];
+    let required_roles = ["admin".to_string(), "moderator".to_string()];
     let has_any_role = user_context
         .roles
         .iter()
@@ -354,14 +304,11 @@ fn test_e2e_multiple_permissions_all_required() {
     );
 
     // Validate token
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has ALL required permissions
-    let required_permissions = vec![
-        "products:write".to_string(),
-        "products:delete".to_string(),
-    ];
+    let required_permissions = ["products:write".to_string(), "products:delete".to_string()];
     let has_all_permissions = required_permissions
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
@@ -379,22 +326,14 @@ fn test_e2e_multiple_permissions_missing_one() {
     let auth_config = create_auth_config(secret);
 
     // Create a token with only write permission (missing delete)
-    let token = create_token(
-        "user123",
-        vec![],
-        vec!["products:write"],
-        secret,
-    );
+    let token = create_token("user123", vec![], vec!["products:write"], secret);
 
     // Validate token
-    let user_context = validate_jwt_token(&token, &auth_config)
-        .expect("Token validation should succeed");
+    let user_context =
+        validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has ALL required permissions
-    let required_permissions = vec![
-        "products:write".to_string(),
-        "products:delete".to_string(),
-    ];
+    let required_permissions = ["products:write".to_string(), "products:delete".to_string()];
     let has_all_permissions = required_permissions
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
@@ -408,15 +347,13 @@ fn test_e2e_multiple_permissions_missing_one() {
 #[test]
 fn test_e2e_route_configuration_integration() {
     // Test that route configuration properly stores authorization requirements
-    let upstreams = vec![
-        UpstreamConfig {
-            id: "test-service".to_string(),
-            base_url: "http://localhost:8081".to_string(),
-            timeout_secs: 30,
-            health_check_path: None,
-            pool_max_idle_per_host: 10,
-        },
-    ];
+    let upstreams = vec![UpstreamConfig {
+        id: "test-service".to_string(),
+        base_url: "http://localhost:8081".to_string(),
+        timeout_secs: 30,
+        health_check_path: None,
+        pool_max_idle_per_host: 10,
+    }];
 
     let routes = vec![
         RouteConfig {
@@ -430,6 +367,7 @@ fn test_e2e_route_configuration_integration() {
             auth_required: true,
             required_roles: vec!["admin".to_string()],
             required_permissions: vec![],
+            rate_limit: None,
         },
         RouteConfig {
             id: "protected-route".to_string(),
@@ -442,6 +380,7 @@ fn test_e2e_route_configuration_integration() {
             auth_required: true,
             required_roles: vec![],
             required_permissions: vec!["orders:create".to_string()],
+            rate_limit: None,
         },
     ];
 
