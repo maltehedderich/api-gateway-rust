@@ -1,4 +1,3 @@
-use reqwest;
 use std::time::Duration;
 
 /// Test that the health check endpoints work
@@ -7,7 +6,7 @@ async fn test_health_endpoints() {
     // Note: This test assumes the server is running on localhost:8080
     // In a real CI environment, we would spawn the server in the test
 
-    let client = reqwest::Client::builder()
+    let _client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
         .unwrap();
