@@ -1,0 +1,43 @@
+name: Security Audit
+
+on:
+  # Run on PRs to catch issues before merge
+  pull_request:
+    branches: [ main ]
+  # Run on pushes to main
+  push:
+    branches: [ main ]
+  # Weekly scheduled audit to catch new CVEs
+  schedule:
+    - cron: '0 0 * * 0'  # Every Sunday at midnight UTC
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit
+
+  advisories:
+    name: Check RustSec Advisories
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check advisories
+        uses: rustsec/audit-check@v1.4.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
