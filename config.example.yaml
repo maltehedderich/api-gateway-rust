@@ -88,3 +88,53 @@ routes:
     path: "/api/reports/generate"
     upstream_id: "product-service"
     timeout_secs: 120
+
+  # Protected route requiring authentication
+  - id: "protected-users"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    path: "/api/admin/users/*"
+    upstream_id: "user-service"
+    auth_required: true
+    required_roles: ["admin"]  # RBAC: User must have 'admin' role
+
+  # Route requiring specific permissions
+  - id: "create-order"
+    methods: ["POST"]
+    path: "/api/orders"
+    upstream_id: "order-service"
+    auth_required: true
+    required_permissions: ["orders:create"]  # PBAC: User must have this permission
+
+  # Route requiring multiple permissions
+  - id: "manage-products"
+    methods: ["PUT", "DELETE"]
+    path: "/api/products/{id}"
+    upstream_id: "product-service"
+    auth_required: true
+    required_permissions: ["products:write", "products:delete"]
+
+# Authentication configuration (optional - if not provided, authentication is disabled)
+# NOTE: For production, load secrets from environment variables instead of config file
+auth:
+  # JWT algorithm for token validation (HS256, RS256, or ES256)
+  jwt_algorithm: "HS256"
+
+  # JWT secret key for HS256 algorithm (symmetric)
+  # For production, use environment variable: GATEWAY_JWT_SECRET
+  # jwt_secret: "your-secret-key-here-min-256-bits"
+
+  # JWT public key for RS256/ES256 algorithms (asymmetric)
+  # For production, use environment variable: GATEWAY_JWT_PUBLIC_KEY
+  # jwt_public_key: |
+  #   -----BEGIN PUBLIC KEY-----
+  #   MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
+  #   -----END PUBLIC KEY-----
+
+  # Cookie name for session token (default: session_token)
+  cookie_name: "session_token"
+
+  # JWT issuer claim validation (optional - validates 'iss' claim)
+  # jwt_issuer: "https://auth.example.com"
+
+  # JWT audience claim validation (optional - validates 'aud' claim)
+  # jwt_audience: "api-gateway"
