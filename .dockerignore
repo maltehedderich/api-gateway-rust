@@ -1,0 +1,49 @@
+# Git
+.git
+.github
+.gitignore
+.gitguardian.yaml
+
+# Build artifacts
+target/
+**/*.rs.bk
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation (except what's needed)
+*.md
+!README.md
+
+# Testing
+tests/fixtures/
+
+# Scripts
+scripts/
+load-test.sh
+
+# CI/CD
+.github/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Kubernetes
+k8s/
+kubernetes/
+deployments/
+
+# Local development
+.env
+.env.local
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
