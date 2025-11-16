@@ -1,11 +1,6 @@
 use crate::config::AuthConfig;
 use crate::error::GatewayError;
-use axum::{
-    extract::Request,
-    http::header,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::header, middleware::Next, response::Response};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use moka::future::Cache;
 use redis::aio::ConnectionManager;
@@ -156,9 +151,10 @@ impl TokenValidator {
         // Initialize Redis client for opaque tokens
         let redis_client = if auth_config.token_format == "opaque" {
             if let Some(ref session_store) = auth_config.session_store {
-                let client = redis::Client::open(session_store.redis_url.as_str()).map_err(|e| {
-                    GatewayError::Config(format!("Failed to create Redis client: {}", e))
-                })?;
+                let client =
+                    redis::Client::open(session_store.redis_url.as_str()).map_err(|e| {
+                        GatewayError::Config(format!("Failed to create Redis client: {}", e))
+                    })?;
 
                 let conn_manager = ConnectionManager::new(client).await.map_err(|e| {
                     GatewayError::Config(format!("Failed to connect to Redis: {}", e))
@@ -246,10 +242,13 @@ impl TokenValidator {
             .as_ref()
             .ok_or_else(|| GatewayError::Config("Session store not configured".to_string()))?;
 
-        let mut redis_conn = self.redis_client.as_ref().ok_or_else(|| {
-            GatewayError::AuthenticationFailed("Redis connection not available".to_string())
-        })?
-        .clone();
+        let mut redis_conn = self
+            .redis_client
+            .as_ref()
+            .ok_or_else(|| {
+                GatewayError::AuthenticationFailed("Redis connection not available".to_string())
+            })?
+            .clone();
 
         // Construct Redis key
         let redis_key = format!("{}{}", session_store.key_prefix, token);
@@ -289,7 +288,10 @@ impl TokenValidator {
         // Check if session is expired
         let now = chrono::Utc::now().timestamp();
         if session_data.expires_at < now {
-            debug!("Session expired (expires_at: {}, now: {})", session_data.expires_at, now);
+            debug!(
+                "Session expired (expires_at: {}, now: {})",
+                session_data.expires_at, now
+            );
             return Err(GatewayError::TokenExpired);
         }
 
@@ -407,11 +409,9 @@ pub fn validate_jwt_token(
     }
 
     // Decode and validate token
-    let token_data = decode::<Claims>(token, &decoding_key, &validation).map_err(|e| {
-        match e.kind() {
-            jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                GatewayError::TokenExpired
-            }
+    let token_data =
+        decode::<Claims>(token, &decoding_key, &validation).map_err(|e| match e.kind() {
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => GatewayError::TokenExpired,
             jsonwebtoken::errors::ErrorKind::InvalidSignature => {
                 GatewayError::InvalidToken("Invalid signature".to_string())
             }
@@ -422,8 +422,7 @@ pub fn validate_jwt_token(
                 GatewayError::InvalidToken("Invalid audience".to_string())
             }
             _ => GatewayError::InvalidToken(format!("Token validation failed: {}", e)),
-        }
-    })?;
+        })?;
 
     Ok(token_data.claims.into())
 }
@@ -454,13 +453,14 @@ pub async fn authentication_middleware(
     );
 
     // Extract token from request
-    let token = extract_token(&request, &token_validator.auth_config.cookie_name).ok_or_else(|| {
-        warn!(
-            correlation_id = %correlation_id,
-            "Authentication failed: missing token"
-        );
-        GatewayError::MissingToken
-    })?;
+    let token =
+        extract_token(&request, &token_validator.auth_config.cookie_name).ok_or_else(|| {
+            warn!(
+                correlation_id = %correlation_id,
+                "Authentication failed: missing token"
+            );
+            GatewayError::MissingToken
+        })?;
 
     // Log token presence (not the value!)
     debug!(
@@ -570,18 +570,15 @@ pub async fn authorization_middleware(
         .unwrap_or_else(|| "unknown".to_string());
 
     // Extract user context (should be present if authentication succeeded)
-    let user_context = request
-        .extensions()
-        .get::<UserContext>()
-        .ok_or_else(|| {
-            error!(
-                correlation_id = %correlation_id,
-                "Authorization failed: user context not found (authentication missing?)"
-            );
-            GatewayError::AuthenticationFailed(
-                "User context not found. Authentication required.".to_string(),
-            )
-        })?;
+    let user_context = request.extensions().get::<UserContext>().ok_or_else(|| {
+        error!(
+            correlation_id = %correlation_id,
+            "Authorization failed: user context not found (authentication missing?)"
+        );
+        GatewayError::AuthenticationFailed(
+            "User context not found. Authentication required.".to_string(),
+        )
+    })?;
 
     debug!(
         correlation_id = %correlation_id,

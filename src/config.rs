@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Main configuration for the API Gateway
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub server: ServerConfig,
     #[serde(default)]
@@ -259,18 +259,6 @@ impl Default for ServerConfig {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            routes: Vec::new(),
-            upstreams: Vec::new(),
-            auth: None,
-            rate_limiting: None,
-        }
-    }
-}
-
 /// Route configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouteConfig {
@@ -355,14 +343,12 @@ impl Config {
 
         // Parse based on file extension
         let config: Config = if path.extension().and_then(|s| s.to_str()) == Some("json") {
-            serde_json::from_str(&contents).map_err(|e| {
-                GatewayError::Config(format!("Failed to parse config JSON: {}", e))
-            })?
+            serde_json::from_str(&contents)
+                .map_err(|e| GatewayError::Config(format!("Failed to parse config JSON: {}", e)))?
         } else {
             // Default to YAML
-            serde_yaml::from_str(&contents).map_err(|e| {
-                GatewayError::Config(format!("Failed to parse config YAML: {}", e))
-            })?
+            serde_yaml::from_str(&contents)
+                .map_err(|e| GatewayError::Config(format!("Failed to parse config YAML: {}", e)))?
         };
 
         Ok(config)
@@ -574,7 +560,8 @@ impl Config {
                         && !session_store.redis_url.starts_with("rediss://")
                     {
                         return Err(GatewayError::Config(
-                            "Session store Redis URL must start with redis:// or rediss://".to_string(),
+                            "Session store Redis URL must start with redis:// or rediss://"
+                                .to_string(),
                         ));
                     }
 
@@ -621,7 +608,9 @@ impl Config {
             }
 
             // Validate URL format
-            if !upstream.base_url.starts_with("http://") && !upstream.base_url.starts_with("https://") {
+            if !upstream.base_url.starts_with("http://")
+                && !upstream.base_url.starts_with("https://")
+            {
                 return Err(GatewayError::Config(format!(
                     "Upstream '{}' base_url must start with http:// or https://",
                     upstream.id
@@ -672,13 +661,16 @@ impl Config {
             }
 
             if !rate_limiting.redis_url.starts_with("redis://")
-                && !rate_limiting.redis_url.starts_with("rediss://") {
+                && !rate_limiting.redis_url.starts_with("rediss://")
+            {
                 return Err(GatewayError::Config(
                     "Rate limiting Redis URL must start with redis:// or rediss://".to_string(),
                 ));
             }
 
-            if rate_limiting.failure_mode != "fail_open" && rate_limiting.failure_mode != "fail_closed" {
+            if rate_limiting.failure_mode != "fail_open"
+                && rate_limiting.failure_mode != "fail_closed"
+            {
                 return Err(GatewayError::Config(format!(
                     "Invalid failure mode: {}. Must be 'fail_open' or 'fail_closed'",
                     rate_limiting.failure_mode
@@ -693,7 +685,10 @@ impl Config {
         Ok(())
     }
 
-    fn validate_rate_limit_policy(policy: &RateLimitPolicy, context: &str) -> Result<(), GatewayError> {
+    fn validate_rate_limit_policy(
+        policy: &RateLimitPolicy,
+        context: &str,
+    ) -> Result<(), GatewayError> {
         if policy.limit == 0 {
             return Err(GatewayError::Config(format!(
                 "{}: Rate limit must be greater than 0",
@@ -715,7 +710,9 @@ impl Config {
             )));
         }
 
-        if !["ip", "user", "endpoint", "user_endpoint", "ip_endpoint"].contains(&policy.key_type.as_str()) {
+        if !["ip", "user", "endpoint", "user_endpoint", "ip_endpoint"]
+            .contains(&policy.key_type.as_str())
+        {
             return Err(GatewayError::Config(format!(
                 "{}: Invalid key type '{}'. Must be one of: ip, user, endpoint, user_endpoint, ip_endpoint",
                 context, policy.key_type

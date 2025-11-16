@@ -103,12 +103,8 @@ impl RateLimiter {
         let key = self.construct_key(context, policy)?;
 
         let result = match policy.algorithm.as_str() {
-            "token_bucket" => {
-                self.check_token_bucket(&key, policy).await
-            }
-            "sliding_window" => {
-                self.check_sliding_window(&key, policy).await
-            }
+            "token_bucket" => self.check_token_bucket(&key, policy).await,
+            "sliding_window" => self.check_sliding_window(&key, policy).await,
             _ => {
                 return Err(GatewayError::RateLimiting(format!(
                     "Unsupported algorithm: {}",
@@ -399,18 +395,9 @@ mod tests {
 
     #[test]
     fn test_key_type_from_string() {
-        assert_eq!(
-            KeyType::from_string("ip").unwrap(),
-            KeyType::Ip
-        );
-        assert_eq!(
-            KeyType::from_string("user").unwrap(),
-            KeyType::User
-        );
-        assert_eq!(
-            KeyType::from_string("endpoint").unwrap(),
-            KeyType::Endpoint
-        );
+        assert_eq!(KeyType::from_string("ip").unwrap(), KeyType::Ip);
+        assert_eq!(KeyType::from_string("user").unwrap(), KeyType::User);
+        assert_eq!(KeyType::from_string("endpoint").unwrap(), KeyType::Endpoint);
         assert_eq!(
             KeyType::from_string("user_endpoint").unwrap(),
             KeyType::UserEndpoint

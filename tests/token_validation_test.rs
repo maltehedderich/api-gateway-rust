@@ -112,7 +112,10 @@ async fn test_jwt_token_validation_with_cache() {
 
     // Second validation - should hit the cache
     let result2 = validator.validate_token(&token).await;
-    assert!(result2.is_ok(), "Second JWT validation should succeed (from cache)");
+    assert!(
+        result2.is_ok(),
+        "Second JWT validation should succeed (from cache)"
+    );
 
     let user_context = result2.unwrap();
     assert_eq!(user_context.user_id, "user123");
@@ -239,7 +242,10 @@ async fn test_opaque_token_expired() {
 
     // Validate the expired opaque token
     let result = validator.validate_token(token).await;
-    assert!(result.is_err(), "Expired opaque token should fail validation");
+    assert!(
+        result.is_err(),
+        "Expired opaque token should fail validation"
+    );
 
     // Clean up
     let _: () = conn.del(&redis_key).await.unwrap();

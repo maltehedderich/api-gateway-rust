@@ -44,10 +44,7 @@ impl Default for CorrelationId {
 /// 2. Generates a new UUID if no correlation ID is provided
 /// 3. Adds the correlation ID to request extensions
 /// 4. Adds X-Correlation-ID header to the response
-pub async fn correlation_id_middleware(
-    mut request: Request,
-    next: Next,
-) -> Response {
+pub async fn correlation_id_middleware(mut request: Request, next: Next) -> Response {
     // Try to extract correlation ID from headers
     let correlation_id = request
         .headers()
@@ -67,7 +64,9 @@ pub async fn correlation_id_middleware(
 
     // Add correlation ID to response headers
     if let Ok(header_value) = HeaderValue::from_str(&correlation_id_value) {
-        response.headers_mut().insert("x-correlation-id", header_value);
+        response
+            .headers_mut()
+            .insert("x-correlation-id", header_value);
     }
 
     response
@@ -83,10 +82,7 @@ pub struct ClientIp(pub String);
 /// 1. Extracts client IP from X-Forwarded-For or X-Real-IP headers
 /// 2. Falls back to connection remote address if headers are not present
 /// 3. Adds the IP to request extensions for use by other middleware
-pub async fn client_ip_middleware(
-    mut request: Request,
-    next: Next,
-) -> Response {
+pub async fn client_ip_middleware(mut request: Request, next: Next) -> Response {
     // Try to extract IP from headers (for proxied requests)
     let client_ip = request
         .headers()
@@ -122,7 +118,8 @@ pub async fn rate_limit_middleware(
     rate_limiter: RateLimiter,
     policy: RateLimitPolicy,
     route_id: String,
-) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>> + Clone {
+) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
+       + Clone {
     move |request: Request, next: Next| {
         let rate_limiter = rate_limiter.clone();
         let policy = policy.clone();
@@ -156,7 +153,8 @@ pub async fn rate_limit_middleware(
                 Ok(decision) => decision,
                 Err(e) => {
                     error!("Rate limit check failed: {}", e);
-                    timer.observe_duration(&metrics::RATE_LIMIT_DURATION_SECONDS, &["check_failed"]);
+                    timer
+                        .observe_duration(&metrics::RATE_LIMIT_DURATION_SECONDS, &["check_failed"]);
 
                     // Return error response
                     return e.into_response();

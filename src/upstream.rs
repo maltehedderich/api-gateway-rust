@@ -46,7 +46,11 @@ impl UpstreamClient {
         );
 
         // Build upstream URL
-        let upstream_url = format!("{}{}", upstream.base_url.trim_end_matches('/'), upstream_uri);
+        let upstream_url = format!(
+            "{}{}",
+            upstream.base_url.trim_end_matches('/'),
+            upstream_uri
+        );
 
         debug!(
             correlation_id = %correlation_id,
@@ -72,9 +76,7 @@ impl UpstreamClient {
         };
 
         // Set timeout
-        let timeout_duration = Duration::from_secs(
-            timeout_secs.unwrap_or(upstream.timeout_secs)
-        );
+        let timeout_duration = Duration::from_secs(timeout_secs.unwrap_or(upstream.timeout_secs));
         req_builder = req_builder.timeout(timeout_duration);
 
         // Forward headers (excluding hop-by-hop headers)
@@ -92,27 +94,24 @@ impl UpstreamClient {
 
         // Send request to upstream
         let start = std::time::Instant::now();
-        let upstream_response = req_builder
-            .send()
-            .await
-            .map_err(|e| {
-                let elapsed = start.elapsed();
-                error!(
-                    correlation_id = %correlation_id,
-                    upstream_url = %upstream_url,
-                    error = %e,
-                    elapsed_ms = %elapsed.as_millis(),
-                    "Upstream request failed"
-                );
+        let upstream_response = req_builder.send().await.map_err(|e| {
+            let elapsed = start.elapsed();
+            error!(
+                correlation_id = %correlation_id,
+                upstream_url = %upstream_url,
+                error = %e,
+                elapsed_ms = %elapsed.as_millis(),
+                "Upstream request failed"
+            );
 
-                if e.is_timeout() {
-                    GatewayError::GatewayTimeout
-                } else if e.is_connect() {
-                    GatewayError::BadGateway(format!("Failed to connect to upstream: {}", e))
-                } else {
-                    GatewayError::BadGateway(format!("Upstream error: {}", e))
-                }
-            })?;
+            if e.is_timeout() {
+                GatewayError::GatewayTimeout
+            } else if e.is_connect() {
+                GatewayError::BadGateway(format!("Failed to connect to upstream: {}", e))
+            } else {
+                GatewayError::BadGateway(format!("Upstream error: {}", e))
+            }
+        })?;
 
         let elapsed = start.elapsed();
         let status = upstream_response.status();
@@ -126,8 +125,9 @@ impl UpstreamClient {
         );
 
         // Convert reqwest Response to axum Response
-        let mut response_builder = Response::builder()
-            .status(StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR));
+        let mut response_builder = Response::builder().status(
+            StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        );
 
         // Copy response headers (excluding hop-by-hop headers)
         for (key, value) in upstream_response.headers() {
@@ -142,17 +142,14 @@ impl UpstreamClient {
             .header("X-Correlation-ID", correlation_id);
 
         // Get response body
-        let response_bytes = upstream_response
-            .bytes()
-            .await
-            .map_err(|e| {
-                error!(
-                    correlation_id = %correlation_id,
-                    error = %e,
-                    "Failed to read upstream response body"
-                );
-                GatewayError::BadGateway("Failed to read upstream response".to_string())
-            })?;
+        let response_bytes = upstream_response.bytes().await.map_err(|e| {
+            error!(
+                correlation_id = %correlation_id,
+                error = %e,
+                "Failed to read upstream response body"
+            );
+            GatewayError::BadGateway("Failed to read upstream response".to_string())
+        })?;
 
         let response = response_builder
             .body(Body::from(response_bytes))

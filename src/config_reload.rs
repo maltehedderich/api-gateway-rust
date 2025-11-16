@@ -106,10 +106,7 @@ impl ConfigManager {
         let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
             if let Ok(event) = res {
                 // Only reload on modify and create events
-                if matches!(
-                    event.kind,
-                    EventKind::Modify(_) | EventKind::Create(_)
-                ) {
+                if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
                     let _ = tx.blocking_send(());
                 }
             }
@@ -141,7 +138,10 @@ impl ConfigManager {
                         }
                     },
                     Err(e) => {
-                        error!("Failed to load new configuration, keeping old config: {}", e);
+                        error!(
+                            "Failed to load new configuration, keeping old config: {}",
+                            e
+                        );
                     }
                 }
             }
@@ -188,7 +188,7 @@ impl ConfigManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Seek, Write};
+    use std::io::Write;
     use tempfile::NamedTempFile;
 
     #[tokio::test]
@@ -235,13 +235,17 @@ upstreams: []
         drop(temp_file); // Close the file first
 
         // Write new content
-        std::fs::write(&path, r#"
+        std::fs::write(
+            &path,
+            r#"
 server:
   bind_address: "0.0.0.0"
   port: 9443
 routes: []
 upstreams: []
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         // Reload configuration
         manager.reload().await.unwrap();
