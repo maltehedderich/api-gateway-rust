@@ -1,6 +1,6 @@
 use axum::{
     extract::Request,
-    http::HeaderValue,
+    http::{header, HeaderValue},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -193,6 +193,68 @@ pub async fn rate_limit_middleware(
             response
         })
     }
+}
+
+/// Security headers middleware
+///
+/// This middleware adds security-related HTTP headers to all responses:
+/// - Strict-Transport-Security (HSTS): Enforces HTTPS
+/// - X-Content-Type-Options: Prevents MIME-sniffing
+/// - X-Frame-Options: Prevents clickjacking
+/// - X-XSS-Protection: Enables XSS filter (legacy browsers)
+/// - Content-Security-Policy: Restricts resource loading
+/// - Referrer-Policy: Controls referrer information
+///
+/// These headers help protect against common web vulnerabilities
+pub async fn security_headers_middleware(request: Request, next: Next) -> Response {
+    // Process the request
+    let mut response = next.run(request).await;
+
+    let headers = response.headers_mut();
+
+    // HSTS: Force HTTPS for 1 year, include subdomains
+    // This header tells browsers to always use HTTPS for this domain
+    if let Ok(value) = HeaderValue::from_str("max-age=31536000; includeSubDomains; preload") {
+        headers.insert(header::STRICT_TRANSPORT_SECURITY, value);
+    }
+
+    // X-Content-Type-Options: Prevent MIME-sniffing
+    // This prevents browsers from trying to guess content types
+    if let Ok(value) = HeaderValue::from_str("nosniff") {
+        headers.insert(header::X_CONTENT_TYPE_OPTIONS, value);
+    }
+
+    // X-Frame-Options: Prevent clickjacking by disallowing framing
+    // This prevents the page from being embedded in iframes
+    if let Ok(value) = HeaderValue::from_str("DENY") {
+        headers.insert(header::X_FRAME_OPTIONS, value);
+    }
+
+    // X-XSS-Protection: Enable XSS filter for legacy browsers
+    // Modern browsers use CSP instead, but this helps older browsers
+    if let Ok(value) = HeaderValue::from_str("1; mode=block") {
+        headers.insert("x-xss-protection", value);
+    }
+
+    // Content-Security-Policy: Restrict resource loading
+    // This is a basic CSP that only allows same-origin resources
+    if let Ok(value) = HeaderValue::from_str("default-src 'self'") {
+        headers.insert(header::CONTENT_SECURITY_POLICY, value);
+    }
+
+    // Referrer-Policy: Control referrer information
+    // This limits the referrer information sent to other sites
+    if let Ok(value) = HeaderValue::from_str("strict-origin-when-cross-origin") {
+        headers.insert(header::REFERER, value);
+    }
+
+    // X-Permitted-Cross-Domain-Policies: Restrict cross-domain policies
+    // This prevents Adobe Flash and PDF from loading content
+    if let Ok(value) = HeaderValue::from_str("none") {
+        headers.insert("x-permitted-cross-domain-policies", value);
+    }
+
+    response
 }
 
 #[cfg(test)]

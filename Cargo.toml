@@ -49,7 +49,7 @@ jsonwebtoken = "9.2"
 base64 = "0.21"
 
 # Metrics
-prometheus = "0.13"
+prometheus = "0.14"
 lazy_static = "1.4"
 
 # Redis for rate limiting and session store
@@ -60,6 +60,9 @@ notify = "6.1"
 
 # Token validation caching
 moka = { version = "0.12", features = ["future"] }
+
+# Regex for sensitive data redaction
+regex = "1.10"
 
 [dev-dependencies]
 # Testing

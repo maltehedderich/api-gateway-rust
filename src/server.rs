@@ -2,7 +2,9 @@ use crate::config::{Config, TlsConfig};
 use crate::error::GatewayError;
 use crate::handler::{handle_request, AppState};
 use crate::metrics::export_metrics;
-use crate::middleware::{client_ip_middleware, correlation_id_middleware};
+use crate::middleware::{
+    client_ip_middleware, correlation_id_middleware, security_headers_middleware,
+};
 use crate::rate_limiter::RateLimiter;
 use crate::routing::Router as GatewayRouter;
 use crate::upstream::UpstreamClient;
@@ -15,7 +17,9 @@ use axum::{
     Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
-use rustls::ServerConfig as RustlsServerConfig;
+use rustls::server::ServerConfig as RustlsServerConfig;
+use rustls::version::{TLS12, TLS13};
+use rustls::SupportedProtocolVersion;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -124,6 +128,8 @@ impl Server {
             .route("/metrics", get(metrics_handler))
             .fallback(handle_request)
             .with_state(app_state)
+            // Add security headers middleware (applied first, affects all responses)
+            .layer(middleware::from_fn(security_headers_middleware))
             // Add client IP extraction middleware
             .layer(middleware::from_fn(client_ip_middleware))
             // Add correlation ID middleware
@@ -205,6 +211,7 @@ impl Server {
 async fn load_tls_config(tls_config: &TlsConfig) -> Result<RustlsConfig, GatewayError> {
     info!("Loading TLS certificate from: {:?}", tls_config.cert_path);
     info!("Loading TLS private key from: {:?}", tls_config.key_path);
+    info!("Minimum TLS version: {}", tls_config.min_version);
 
     // Read certificate and key files
     let cert_data = tokio::fs::read(&tls_config.cert_path).await.map_err(|e| {
@@ -237,13 +244,33 @@ async fn load_tls_config(tls_config: &TlsConfig) -> Result<RustlsConfig, Gateway
         .map_err(|e| GatewayError::TlsConfig(format!("Failed to parse private key: {}", e)))?
         .ok_or_else(|| GatewayError::TlsConfig("No private key found in key file".to_string()))?;
 
-    // Build TLS server config
-    let config = RustlsServerConfig::builder()
+    // Determine supported protocol versions based on min_version
+    let versions: Vec<&'static SupportedProtocolVersion> = match tls_config.min_version.as_str() {
+        "1.3" => {
+            info!("Configuring TLS 1.3 only");
+            vec![&TLS13]
+        }
+        "1.2" => {
+            info!("Configuring TLS 1.2 and TLS 1.3");
+            vec![&TLS13, &TLS12]
+        }
+        _ => {
+            return Err(GatewayError::TlsConfig(format!(
+                "Invalid TLS version: {}. Must be '1.2' or '1.3'",
+                tls_config.min_version
+            )))
+        }
+    };
+
+    // Build TLS server config with security hardening
+    // Use the default cipher suites which are secure and modern
+    // rustls automatically provides strong cipher suites and excludes weak ones
+    let config = RustlsServerConfig::builder_with_protocol_versions(&versions)
         .with_no_client_auth()
         .with_single_cert(certs, key)
         .map_err(|e| GatewayError::TlsConfig(format!("Failed to build TLS config: {}", e)))?;
 
-    info!("TLS configuration loaded successfully");
+    info!("TLS configuration loaded successfully with secure cipher suites");
 
     Ok(RustlsConfig::from_config(Arc::new(config)))
 }
