@@ -1,8 +1,13 @@
 use crate::config::{Config, TlsConfig};
 use crate::error::GatewayError;
+use crate::handler::{handle_request, AppState};
+use crate::middleware::correlation_id_middleware;
+use crate::routing::Router as GatewayRouter;
+use crate::upstream::UpstreamClient;
 use axum::{
     extract::Request,
     http::StatusCode,
+    middleware,
     response::IntoResponse,
     routing::any,
     Router,
@@ -13,10 +18,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tower_http::{
-    timeout::TimeoutLayer,
-    trace::TraceLayer,
-};
+use tower_http::{timeout::TimeoutLayer, trace::TraceLayer};
 use tracing::{debug, error, info, warn};
 
 /// HTTP Server for the API Gateway
@@ -59,11 +61,45 @@ impl Server {
 
     /// Build the application router with middleware
     fn build_app(&self) -> Router {
+        // Create the gateway router from configuration
+        let gateway_router = GatewayRouter::from_config(
+            self.config.routes.clone(),
+            self.config.upstreams.clone(),
+        )
+        .expect("Failed to create gateway router");
+
+        // Determine pool size (use first upstream's config or default)
+        let pool_size = self
+            .config
+            .upstreams
+            .first()
+            .map(|u| u.pool_max_idle_per_host)
+            .unwrap_or(10);
+
+        // Create upstream client
+        let upstream_client =
+            UpstreamClient::new(pool_size).expect("Failed to create upstream client");
+
+        // Create application state
+        let app_state = Arc::new(AppState {
+            router: gateway_router,
+            upstream_client,
+        });
+
+        info!(
+            routes_count = self.config.routes.len(),
+            upstreams_count = self.config.upstreams.len(),
+            "Gateway routing configured"
+        );
+
         // Create the main router
         Router::new()
             .route("/health/live", any(health_live))
             .route("/health/ready", any(health_ready))
             .fallback(handle_request)
+            .with_state(app_state)
+            // Add correlation ID middleware
+            .layer(middleware::from_fn(correlation_id_middleware))
             // Add tracing layer for request logging
             .layer(
                 TraceLayer::new_for_http()
@@ -74,20 +110,28 @@ impl Server {
                             "Incoming request"
                         );
                     })
-                    .on_response(|response: &axum::response::Response, latency: Duration, _span: &tracing::Span| {
-                        info!(
-                            status = %response.status(),
-                            latency_ms = %latency.as_millis(),
-                            "Request completed"
-                        );
-                    })
-                    .on_failure(|error: tower_http::classify::ServerErrorsFailureClass, latency: Duration, _span: &tracing::Span| {
-                        error!(
-                            error = %error,
-                            latency_ms = %latency.as_millis(),
-                            "Request failed"
-                        );
-                    }),
+                    .on_response(
+                        |response: &axum::response::Response,
+                         latency: Duration,
+                         _span: &tracing::Span| {
+                            info!(
+                                status = %response.status(),
+                                latency_ms = %latency.as_millis(),
+                                "Request completed"
+                            );
+                        },
+                    )
+                    .on_failure(
+                        |error: tower_http::classify::ServerErrorsFailureClass,
+                         latency: Duration,
+                         _span: &tracing::Span| {
+                            error!(
+                                error = %error,
+                                latency_ms = %latency.as_millis(),
+                                "Request failed"
+                            );
+                        },
+                    ),
             )
             // Add timeout layer
             .layer(TimeoutLayer::new(Duration::from_secs(
@@ -193,20 +237,6 @@ async fn health_ready() -> impl IntoResponse {
     StatusCode::OK
 }
 
-/// Main request handler (placeholder for routing logic)
-async fn handle_request(req: Request) -> impl IntoResponse {
-    // This is a placeholder that will be replaced with proper routing in later stages
-    info!(
-        method = %req.method(),
-        uri = %req.uri(),
-        "Processing request"
-    );
-
-    (
-        StatusCode::OK,
-        "API Gateway - Connection handling implemented\n",
-    )
-}
 
 #[cfg(test)]
 mod tests {

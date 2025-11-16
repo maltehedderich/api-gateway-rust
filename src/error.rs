@@ -18,8 +18,20 @@ pub enum GatewayError {
     #[error("Bad request: {0}")]
     BadRequest(String),
 
+    #[error("Not found")]
+    NotFound,
+
+    #[error("Method not allowed")]
+    MethodNotAllowed(Vec<String>),
+
     #[error("Connection timeout")]
     ConnectionTimeout,
+
+    #[error("Bad gateway: {0}")]
+    BadGateway(String),
+
+    #[error("Gateway timeout")]
+    GatewayTimeout,
 
     #[error("Internal server error: {0}")]
     Internal(String),
@@ -75,9 +87,31 @@ impl IntoResponse for GatewayError {
                 StatusCode::BAD_REQUEST,
                 ErrorResponse::new("bad_request", &msg),
             ),
+            GatewayError::NotFound => (
+                StatusCode::NOT_FOUND,
+                ErrorResponse::new("not_found", "The requested resource was not found"),
+            ),
+            GatewayError::MethodNotAllowed(methods) => {
+                let details = serde_json::json!({
+                    "allowed_methods": methods
+                });
+                (
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    ErrorResponse::new("method_not_allowed", "Method not allowed for this resource")
+                        .with_details(details),
+                )
+            },
             GatewayError::ConnectionTimeout => (
                 StatusCode::REQUEST_TIMEOUT,
                 ErrorResponse::new("request_timeout", "Connection timeout"),
+            ),
+            GatewayError::BadGateway(msg) => (
+                StatusCode::BAD_GATEWAY,
+                ErrorResponse::new("bad_gateway", &format!("Bad gateway: {}", msg)),
+            ),
+            GatewayError::GatewayTimeout => (
+                StatusCode::GATEWAY_TIMEOUT,
+                ErrorResponse::new("gateway_timeout", "Gateway timeout"),
             ),
             GatewayError::TlsConfig(_msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

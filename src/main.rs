@@ -1,9 +1,5 @@
-mod config;
-mod error;
-mod server;
-
-use crate::config::Config;
-use crate::server::Server;
+use api_gateway_rust::config::Config;
+use api_gateway_rust::server::Server;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
