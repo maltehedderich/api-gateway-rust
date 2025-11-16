@@ -83,6 +83,32 @@ lazy_static! {
         &["service"]
     )
     .expect("Failed to create upstream_request_duration_seconds metric");
+
+    /// Counter for rate limiting decisions
+    /// Labels: decision (allowed, denied), route, key_type
+    pub static ref RATE_LIMIT_DECISIONS_TOTAL: CounterVec = register_counter_vec!(
+        "rate_limit_decisions_total",
+        "Total number of rate limiting decisions",
+        &["decision", "route", "key_type"]
+    )
+    .expect("Failed to create rate_limit_decisions_total metric");
+
+    /// Counter for rate limit exceeded events
+    /// Labels: route, key_type
+    pub static ref RATE_LIMIT_EXCEEDED_TOTAL: CounterVec = register_counter_vec!(
+        "rate_limit_exceeded_total",
+        "Total number of rate limit exceeded events",
+        &["route", "key_type"]
+    )
+    .expect("Failed to create rate_limit_exceeded_total metric");
+
+    /// Histogram for rate limiting operation latency
+    pub static ref RATE_LIMIT_DURATION_SECONDS: HistogramVec = register_histogram_vec!(
+        "rate_limit_duration_seconds",
+        "Duration of rate limiting operations in seconds",
+        &["operation"]
+    )
+    .expect("Failed to create rate_limit_duration_seconds metric");
 }
 
 /// Helper struct to measure operation duration
@@ -129,6 +155,20 @@ pub fn record_auth_error() {
 pub fn record_authz_decision(allowed: bool) {
     let decision = if allowed { "allowed" } else { "denied" };
     AUTHZ_DECISIONS_TOTAL.with_label_values(&[decision]).inc();
+}
+
+/// Record rate limiting decision
+pub fn record_rate_limit_decision(allowed: bool, route: &str, key_type: &str) {
+    let decision = if allowed { "allowed" } else { "denied" };
+    RATE_LIMIT_DECISIONS_TOTAL
+        .with_label_values(&[decision, route, key_type])
+        .inc();
+
+    if !allowed {
+        RATE_LIMIT_EXCEEDED_TOTAL
+            .with_label_values(&[route, key_type])
+            .inc();
+    }
 }
 
 /// Export all metrics in Prometheus text format

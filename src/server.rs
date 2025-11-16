@@ -2,7 +2,8 @@ use crate::config::{Config, TlsConfig};
 use crate::error::GatewayError;
 use crate::handler::{handle_request, AppState};
 use crate::metrics::export_metrics;
-use crate::middleware::correlation_id_middleware;
+use crate::middleware::{client_ip_middleware, correlation_id_middleware};
+use crate::rate_limiter::RateLimiter;
 use crate::routing::Router as GatewayRouter;
 use crate::upstream::UpstreamClient;
 use axum::{
@@ -84,10 +85,33 @@ impl Server {
         // Create application state with optional auth config
         let auth_config = self.config.auth.clone().map(Arc::new);
 
+        // Create rate limiter if rate limiting is configured
+        let rate_limiter = if let Some(ref rate_limiting_config) = self.config.rate_limiting {
+            match tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    RateLimiter::new(rate_limiting_config.clone()).await
+                })
+            }) {
+                Ok(limiter) => {
+                    info!("Rate limiter initialized successfully");
+                    Some(limiter)
+                }
+                Err(e) => {
+                    error!("Failed to initialize rate limiter: {}", e);
+                    warn!("Rate limiting will be disabled");
+                    None
+                }
+            }
+        } else {
+            info!("Rate limiting not configured");
+            None
+        };
+
         let app_state = Arc::new(AppState {
             router: gateway_router,
             upstream_client,
             auth_config,
+            rate_limiter,
         });
 
         info!(
@@ -103,6 +127,8 @@ impl Server {
             .route("/metrics", get(metrics_handler))
             .fallback(handle_request)
             .with_state(app_state)
+            // Add client IP extraction middleware
+            .layer(middleware::from_fn(client_ip_middleware))
             // Add correlation ID middleware
             .layer(middleware::from_fn(correlation_id_middleware))
             // Add tracing layer for request logging

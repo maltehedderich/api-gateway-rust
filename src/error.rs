@@ -60,6 +60,21 @@ pub enum GatewayError {
         required_roles: Vec<String>,
         user_roles: Vec<String>,
     },
+
+    // Rate limiting errors
+    #[error("Rate limit exceeded")]
+    RateLimitExceeded {
+        limit: u64,
+        window_secs: u64,
+        reset_at: u64,
+        retry_after_secs: u64,
+    },
+
+    #[error("Rate limiting error: {0}")]
+    RateLimiting(String),
+
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 /// Error response structure returned to clients
@@ -191,6 +206,33 @@ impl IntoResponse for GatewayError {
                     .with_details(details),
                 )
             }
+            GatewayError::RateLimitExceeded {
+                limit,
+                window_secs,
+                reset_at,
+                retry_after_secs,
+            } => {
+                let details = serde_json::json!({
+                    "limit": limit,
+                    "window": format!("{}s", window_secs),
+                    "reset_at": reset_at,
+                });
+                let error_response = ErrorResponse::new(
+                    "rate_limit_exceeded",
+                    &format!("Rate limit exceeded. Please retry after {} seconds.", retry_after_secs),
+                )
+                .with_details(details);
+
+                (StatusCode::TOO_MANY_REQUESTS, error_response)
+            }
+            GatewayError::RateLimiting(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorResponse::new("rate_limiting_error", &msg),
+            ),
+            GatewayError::ServiceUnavailable(msg) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorResponse::new("service_unavailable", &msg),
+            ),
         };
 
         // Add WWW-Authenticate header for 401 responses
