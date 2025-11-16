@@ -1,6 +1,10 @@
 use crate::auth::validate_jwt_token;
 use crate::config::AuthConfig;
 use crate::error::GatewayError;
+use crate::metrics::{
+    record_auth_error, record_auth_failure, record_auth_success, record_authz_decision,
+    DurationTimer, AUTH_DURATION_SECONDS, AUTHZ_DURATION_SECONDS,
+};
 use crate::middleware::CorrelationId;
 use crate::routing::Router;
 use crate::upstream::{build_upstream_uri, UpstreamClient};
@@ -61,6 +65,8 @@ pub async fn handle_request(
 
             // Perform authentication if required for this route
             let user_context = if route.auth_required {
+                let auth_timer = DurationTimer::new();
+
                 debug!(
                     correlation_id = %correlation_id,
                     route_id = %route.id,
@@ -68,15 +74,15 @@ pub async fn handle_request(
                 );
 
                 // Extract token from request
-                let token = extract_token(&request, &state.auth_config)
-                    .ok_or_else(|| {
-                        warn!(
-                            correlation_id = %correlation_id,
-                            route_id = %route.id,
-                            "Authentication failed: missing token"
-                        );
-                        GatewayError::MissingToken
-                    })?;
+                let token = extract_token(&request, &state.auth_config).ok_or_else(|| {
+                    warn!(
+                        correlation_id = %correlation_id,
+                        route_id = %route.id,
+                        "Authentication failed: missing token"
+                    );
+                    record_auth_failure("missing_token");
+                    GatewayError::MissingToken
+                })?;
 
                 // Validate token
                 let auth_config = state.auth_config.as_ref().ok_or_else(|| {
@@ -84,8 +90,9 @@ pub async fn handle_request(
                         correlation_id = %correlation_id,
                         "Authentication required but auth config not found"
                     );
+                    record_auth_error();
                     GatewayError::AuthenticationFailed(
-                        "Authentication not configured".to_string()
+                        "Authentication not configured".to_string(),
                     )
                 })?;
 
@@ -96,8 +103,21 @@ pub async fn handle_request(
                         error = %e,
                         "Authentication failed: token validation error"
                     );
+
+                    // Record specific failure reason based on error type
+                    match &e {
+                        GatewayError::TokenExpired => record_auth_failure("token_expired"),
+                        GatewayError::InvalidToken(_) => record_auth_failure("invalid_token"),
+                        GatewayError::TokenRevoked => record_auth_failure("token_revoked"),
+                        _ => record_auth_failure("validation_error"),
+                    }
+
                     e
                 })?;
+
+                // Record successful authentication
+                record_auth_success();
+                auth_timer.observe_duration(&AUTH_DURATION_SECONDS, &["validate_token"]);
 
                 info!(
                     correlation_id = %correlation_id,
@@ -114,6 +134,8 @@ pub async fn handle_request(
 
             // Perform authorization if required (check roles and permissions)
             if let Some(ref user) = user_context {
+                let authz_timer = DurationTimer::new();
+
                 // Check roles (RBAC - any matching role grants access)
                 if !route.required_roles.is_empty() {
                     let has_required_role = user
@@ -130,6 +152,8 @@ pub async fn handle_request(
                             required_roles = ?route.required_roles,
                             "Authorization failed: insufficient roles"
                         );
+                        record_authz_decision(false);
+                        authz_timer.observe_duration(&AUTHZ_DURATION_SECONDS, &["check_roles"]);
                         return Err(GatewayError::InsufficientPermissions {
                             required_roles: route.required_roles.clone(),
                             user_roles: user.roles.clone(),
@@ -153,12 +177,19 @@ pub async fn handle_request(
                             required_permissions = ?route.required_permissions,
                             "Authorization failed: insufficient permissions"
                         );
+                        record_authz_decision(false);
+                        authz_timer
+                            .observe_duration(&AUTHZ_DURATION_SECONDS, &["check_permissions"]);
                         return Err(GatewayError::InsufficientPermissions {
                             required_roles: vec![],
                             user_roles: vec![],
                         });
                     }
                 }
+
+                // Record successful authorization
+                record_authz_decision(true);
+                authz_timer.observe_duration(&AUTHZ_DURATION_SECONDS, &["check_success"]);
 
                 info!(
                     correlation_id = %correlation_id,

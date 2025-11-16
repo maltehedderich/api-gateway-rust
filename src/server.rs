@@ -1,15 +1,16 @@
 use crate::config::{Config, TlsConfig};
 use crate::error::GatewayError;
 use crate::handler::{handle_request, AppState};
+use crate::metrics::export_metrics;
 use crate::middleware::correlation_id_middleware;
 use crate::routing::Router as GatewayRouter;
 use crate::upstream::UpstreamClient;
 use axum::{
     extract::Request,
-    http::StatusCode,
+    http::{header, StatusCode},
     middleware,
     response::IntoResponse,
-    routing::any,
+    routing::{any, get},
     Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
@@ -99,6 +100,7 @@ impl Server {
         Router::new()
             .route("/health/live", any(health_live))
             .route("/health/ready", any(health_ready))
+            .route("/metrics", get(metrics_handler))
             .fallback(handle_request)
             .with_state(app_state)
             // Add correlation ID middleware
@@ -240,6 +242,25 @@ async fn health_ready() -> impl IntoResponse {
     StatusCode::OK
 }
 
+/// Metrics endpoint - Prometheus-compatible metrics export
+async fn metrics_handler() -> impl IntoResponse {
+    match export_metrics() {
+        Ok(metrics) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+            metrics,
+        )
+            .into_response(),
+        Err(e) => {
+            error!("Failed to export metrics: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to export metrics",
+            )
+                .into_response()
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
