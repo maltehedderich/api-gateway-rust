@@ -91,7 +91,10 @@ impl Router {
                 .collect();
 
             let methods = methods.map_err(|e| {
-                GatewayError::Config(format!("Invalid HTTP method in route '{}': {}", route_config.id, e))
+                GatewayError::Config(format!(
+                    "Invalid HTTP method in route '{}': {}",
+                    route_config.id, e
+                ))
             })?;
 
             // Parse path pattern
@@ -162,7 +165,9 @@ impl Router {
     /// Check if a route exists for the given path (for 405 responses)
     pub fn has_route_for_path(&self, uri: &Uri) -> bool {
         let path = uri.path();
-        self.routes.iter().any(|r| r.pattern.matches(path).is_some())
+        self.routes
+            .iter()
+            .any(|r| r.pattern.matches(path).is_some())
     }
 }
 
@@ -170,7 +175,9 @@ impl PathPattern {
     /// Parse a path pattern from a string
     pub fn parse(pattern: &str) -> Result<Self, GatewayError> {
         if pattern.is_empty() {
-            return Err(GatewayError::Config("Path pattern cannot be empty".to_string()));
+            return Err(GatewayError::Config(
+                "Path pattern cannot be empty".to_string(),
+            ));
         }
 
         // Check for prefix pattern (ends with /*)
@@ -213,9 +220,9 @@ impl PathPattern {
     /// Get priority for sorting (lower is higher priority)
     fn priority(&self) -> u8 {
         match self {
-            PathPattern::Exact(_) => 0,      // Highest priority
-            PathPattern::Template(_) => 1,   // Medium priority
-            PathPattern::Prefix(_) => 2,     // Lowest priority
+            PathPattern::Exact(_) => 0,    // Highest priority
+            PathPattern::Template(_) => 1, // Medium priority
+            PathPattern::Prefix(_) => 2,   // Lowest priority
         }
     }
 }

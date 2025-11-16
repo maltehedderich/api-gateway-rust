@@ -5,12 +5,7 @@ use crate::middleware::correlation_id_middleware;
 use crate::routing::Router as GatewayRouter;
 use crate::upstream::UpstreamClient;
 use axum::{
-    extract::Request,
-    http::StatusCode,
-    middleware,
-    response::IntoResponse,
-    routing::any,
-    Router,
+    extract::Request, http::StatusCode, middleware, response::IntoResponse, routing::any, Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
 use rustls::ServerConfig as RustlsServerConfig;
@@ -62,11 +57,9 @@ impl Server {
     /// Build the application router with middleware
     fn build_app(&self) -> Router {
         // Create the gateway router from configuration
-        let gateway_router = GatewayRouter::from_config(
-            self.config.routes.clone(),
-            self.config.upstreams.clone(),
-        )
-        .expect("Failed to create gateway router");
+        let gateway_router =
+            GatewayRouter::from_config(self.config.routes.clone(), self.config.upstreams.clone())
+                .expect("Failed to create gateway router");
 
         // Determine pool size (use first upstream's config or default)
         let pool_size = self
@@ -184,23 +177,19 @@ async fn load_tls_config(tls_config: &TlsConfig) -> Result<RustlsConfig, Gateway
     info!("Loading TLS private key from: {:?}", tls_config.key_path);
 
     // Read certificate and key files
-    let cert_data = tokio::fs::read(&tls_config.cert_path)
-        .await
-        .map_err(|e| {
-            GatewayError::TlsConfig(format!(
-                "Failed to read certificate file {:?}: {}",
-                tls_config.cert_path, e
-            ))
-        })?;
+    let cert_data = tokio::fs::read(&tls_config.cert_path).await.map_err(|e| {
+        GatewayError::TlsConfig(format!(
+            "Failed to read certificate file {:?}: {}",
+            tls_config.cert_path, e
+        ))
+    })?;
 
-    let key_data = tokio::fs::read(&tls_config.key_path)
-        .await
-        .map_err(|e| {
-            GatewayError::TlsConfig(format!(
-                "Failed to read key file {:?}: {}",
-                tls_config.key_path, e
-            ))
-        })?;
+    let key_data = tokio::fs::read(&tls_config.key_path).await.map_err(|e| {
+        GatewayError::TlsConfig(format!(
+            "Failed to read key file {:?}: {}",
+            tls_config.key_path, e
+        ))
+    })?;
 
     // Parse certificates
     let certs = rustls_pemfile::certs(&mut cert_data.as_slice())
@@ -239,7 +228,6 @@ async fn health_ready() -> impl IntoResponse {
     // For now, just return OK. In future phases, this will check dependencies
     StatusCode::OK
 }
-
 
 #[cfg(test)]
 mod tests {

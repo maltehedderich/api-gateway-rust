@@ -1,9 +1,4 @@
-use axum::{
-    extract::Request,
-    http::HeaderValue,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::HeaderValue, middleware::Next, response::Response};
 use uuid::Uuid;
 
 /// Extension type for storing correlation ID in request
@@ -37,10 +32,7 @@ impl Default for CorrelationId {
 /// 2. Generates a new UUID if no correlation ID is provided
 /// 3. Adds the correlation ID to request extensions
 /// 4. Adds X-Correlation-ID header to the response
-pub async fn correlation_id_middleware(
-    mut request: Request,
-    next: Next,
-) -> Response {
+pub async fn correlation_id_middleware(mut request: Request, next: Next) -> Response {
     // Try to extract correlation ID from headers
     let correlation_id = request
         .headers()
@@ -60,7 +52,9 @@ pub async fn correlation_id_middleware(
 
     // Add correlation ID to response headers
     if let Ok(header_value) = HeaderValue::from_str(&correlation_id_value) {
-        response.headers_mut().insert("x-correlation-id", header_value);
+        response
+            .headers_mut()
+            .insert("x-correlation-id", header_value);
     }
 
     response

@@ -68,15 +68,14 @@ pub async fn handle_request(
                 );
 
                 // Extract token from request
-                let token = extract_token(&request, &state.auth_config)
-                    .ok_or_else(|| {
-                        warn!(
-                            correlation_id = %correlation_id,
-                            route_id = %route.id,
-                            "Authentication failed: missing token"
-                        );
-                        GatewayError::MissingToken
-                    })?;
+                let token = extract_token(&request, &state.auth_config).ok_or_else(|| {
+                    warn!(
+                        correlation_id = %correlation_id,
+                        route_id = %route.id,
+                        "Authentication failed: missing token"
+                    );
+                    GatewayError::MissingToken
+                })?;
 
                 // Validate token
                 let auth_config = state.auth_config.as_ref().ok_or_else(|| {
@@ -84,9 +83,7 @@ pub async fn handle_request(
                         correlation_id = %correlation_id,
                         "Authentication required but auth config not found"
                     );
-                    GatewayError::AuthenticationFailed(
-                        "Authentication not configured".to_string()
-                    )
+                    GatewayError::AuthenticationFailed("Authentication not configured".to_string())
                 })?;
 
                 let user = validate_jwt_token(&token, auth_config).map_err(|e| {

@@ -371,7 +371,9 @@ impl Config {
             }
 
             // Validate URL format
-            if !upstream.base_url.starts_with("http://") && !upstream.base_url.starts_with("https://") {
+            if !upstream.base_url.starts_with("http://")
+                && !upstream.base_url.starts_with("https://")
+            {
                 return Err(GatewayError::Config(format!(
                     "Upstream '{}' base_url must start with http:// or https://",
                     upstream.id
