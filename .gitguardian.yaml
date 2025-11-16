@@ -1,0 +1,19 @@
+# GitGuardian configuration for API Gateway Rust project
+# This file configures what GitGuardian should scan and what to ignore
+
+version: 2
+
+# Paths to exclude from scanning
+# These files contain test fixtures with intentionally fake secrets
+# used to test our security redaction functionality
+paths-ignore:
+  - tests/security_test.rs  # Contains fake tokens/keys for testing redaction
+  - "**/*.md"               # Documentation files may contain example secrets
+  - "**/target/**"          # Build artifacts
+  - "**/Cargo.lock"         # Dependency lock file
+
+# Explicitly allow test fixtures
+# This tells GitGuardian that secrets in test files are intentional
+matches-ignore:
+  - name: Test fixtures for security redaction
+    match: tests/security_test.rs

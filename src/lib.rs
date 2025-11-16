@@ -3,6 +3,7 @@ pub mod config;
 pub mod config_reload;
 pub mod error;
 pub mod handler;
+pub mod logging;
 pub mod metrics;
 pub mod middleware;
 pub mod rate_limiter;
