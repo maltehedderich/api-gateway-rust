@@ -80,10 +80,13 @@ impl Server {
         let upstream_client =
             UpstreamClient::new(pool_size).expect("Failed to create upstream client");
 
-        // Create application state
+        // Create application state with optional auth config
+        let auth_config = self.config.auth.clone().map(Arc::new);
+
         let app_state = Arc::new(AppState {
             router: gateway_router,
             upstream_client,
+            auth_config,
         });
 
         info!(

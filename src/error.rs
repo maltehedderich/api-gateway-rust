@@ -38,6 +38,28 @@ pub enum GatewayError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    // Authentication and Authorization errors
+    #[error("Missing authentication token")]
+    MissingToken,
+
+    #[error("Invalid token: {0}")]
+    InvalidToken(String),
+
+    #[error("Token expired")]
+    TokenExpired,
+
+    #[error("Token revoked")]
+    TokenRevoked,
+
+    #[error("Authentication failed: {0}")]
+    AuthenticationFailed(String),
+
+    #[error("Insufficient permissions")]
+    InsufficientPermissions {
+        required_roles: Vec<String>,
+        user_roles: Vec<String>,
+    },
 }
 
 /// Error response structure returned to clients
@@ -129,9 +151,58 @@ impl IntoResponse for GatewayError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ErrorResponse::new("internal_error", "An internal error occurred"),
             ),
+            GatewayError::MissingToken => (
+                StatusCode::UNAUTHORIZED,
+                ErrorResponse::new("missing_token", "Authentication token is required"),
+            ),
+            GatewayError::InvalidToken(msg) => (
+                StatusCode::UNAUTHORIZED,
+                ErrorResponse::new("invalid_token", &msg),
+            ),
+            GatewayError::TokenExpired => (
+                StatusCode::UNAUTHORIZED,
+                ErrorResponse::new(
+                    "token_expired",
+                    "Authentication token has expired. Please refresh your token.",
+                ),
+            ),
+            GatewayError::TokenRevoked => (
+                StatusCode::UNAUTHORIZED,
+                ErrorResponse::new("token_revoked", "Authentication token has been revoked"),
+            ),
+            GatewayError::AuthenticationFailed(msg) => (
+                StatusCode::UNAUTHORIZED,
+                ErrorResponse::new("authentication_failed", &msg),
+            ),
+            GatewayError::InsufficientPermissions {
+                required_roles,
+                user_roles,
+            } => {
+                let details = serde_json::json!({
+                    "required_roles": required_roles,
+                    "user_roles": user_roles,
+                });
+                (
+                    StatusCode::FORBIDDEN,
+                    ErrorResponse::new(
+                        "insufficient_permissions",
+                        "You do not have permission to access this resource",
+                    )
+                    .with_details(details),
+                )
+            }
         };
 
-        (status, Json(error_response)).into_response()
+        // Add WWW-Authenticate header for 401 responses
+        let mut response = (status, Json(error_response)).into_response();
+        if status == StatusCode::UNAUTHORIZED {
+            response.headers_mut().insert(
+                axum::http::header::WWW_AUTHENTICATE,
+                axum::http::HeaderValue::from_static("Bearer realm=\"api-gateway\""),
+            );
+        }
+
+        response
     }
 }
 
