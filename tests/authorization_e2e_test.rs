@@ -78,7 +78,7 @@ fn test_e2e_rbac_authorization_success() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has admin role (RBAC)
-    let required_roles = vec!["admin".to_string()];
+    let required_roles = ["admin".to_string()];
     let has_role = user_context
         .roles
         .iter()
@@ -103,7 +103,7 @@ fn test_e2e_rbac_authorization_failure() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has admin role (should fail)
-    let required_roles = vec!["admin".to_string()];
+    let required_roles = ["admin".to_string()];
     let has_role = user_context
         .roles
         .iter()
@@ -134,7 +134,7 @@ fn test_e2e_pbac_authorization_success() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has required permission (PBAC)
-    let required_permissions = vec!["orders:create".to_string()];
+    let required_permissions = ["orders:create".to_string()];
     let has_all_permissions = required_permissions
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
@@ -161,7 +161,7 @@ fn test_e2e_pbac_authorization_failure() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has delete permission (should fail)
-    let required_permissions = vec!["orders:delete".to_string()];
+    let required_permissions = ["orders:delete".to_string()];
     let has_all_permissions = required_permissions
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
@@ -186,8 +186,8 @@ fn test_e2e_combined_rbac_and_pbac_success() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check both role and permission
-    let required_roles = vec!["admin".to_string()];
-    let required_permissions = vec!["users:delete".to_string()];
+    let required_roles = ["admin".to_string()];
+    let required_permissions = ["users:delete".to_string()];
 
     let has_role = user_context
         .roles
@@ -217,8 +217,8 @@ fn test_e2e_combined_rbac_and_pbac_failure_missing_role() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check both role and permission
-    let required_roles = vec!["admin".to_string()];
-    let required_permissions = vec!["users:delete".to_string()];
+    let required_roles = ["admin".to_string()];
+    let required_permissions = ["users:delete".to_string()];
 
     let has_role = user_context
         .roles
@@ -247,8 +247,8 @@ fn test_e2e_combined_rbac_and_pbac_failure_missing_permission() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check both role and permission
-    let required_roles = vec!["admin".to_string()];
-    let required_permissions = vec!["users:delete".to_string()];
+    let required_roles = ["admin".to_string()];
+    let required_permissions = ["users:delete".to_string()];
 
     let has_role = user_context
         .roles
@@ -277,7 +277,7 @@ fn test_e2e_multiple_roles_any_match() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has admin OR moderator role (any match)
-    let required_roles = vec!["admin".to_string(), "moderator".to_string()];
+    let required_roles = ["admin".to_string(), "moderator".to_string()];
     let has_any_role = user_context
         .roles
         .iter()
@@ -308,7 +308,7 @@ fn test_e2e_multiple_permissions_all_required() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has ALL required permissions
-    let required_permissions = vec!["products:write".to_string(), "products:delete".to_string()];
+    let required_permissions = ["products:write".to_string(), "products:delete".to_string()];
     let has_all_permissions = required_permissions
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
@@ -333,7 +333,7 @@ fn test_e2e_multiple_permissions_missing_one() {
         validate_jwt_token(&token, &auth_config).expect("Token validation should succeed");
 
     // Check if user has ALL required permissions
-    let required_permissions = vec!["products:write".to_string(), "products:delete".to_string()];
+    let required_permissions = ["products:write".to_string(), "products:delete".to_string()];
     let has_all_permissions = required_permissions
         .iter()
         .all(|perm| user_context.permissions.contains(perm));
@@ -367,6 +367,7 @@ fn test_e2e_route_configuration_integration() {
             auth_required: true,
             required_roles: vec!["admin".to_string()],
             required_permissions: vec![],
+            rate_limit: None,
         },
         RouteConfig {
             id: "protected-route".to_string(),
@@ -379,6 +380,7 @@ fn test_e2e_route_configuration_integration() {
             auth_required: true,
             required_roles: vec![],
             required_permissions: vec!["orders:create".to_string()],
+            rate_limit: None,
         },
     ];
 

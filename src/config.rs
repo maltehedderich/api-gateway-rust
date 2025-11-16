@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Main configuration for the API Gateway
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub server: ServerConfig,
     #[serde(default)]
@@ -190,17 +190,6 @@ impl Default for ServerConfig {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            routes: Vec::new(),
-            upstreams: Vec::new(),
-            auth: None,
-            rate_limiting: None,
-        }
-    }
-}
 
 /// Route configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

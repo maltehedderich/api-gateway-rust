@@ -190,7 +190,7 @@ impl Server {
     async fn run_without_tls(&self, addr: SocketAddr, app: Router) -> Result<(), GatewayError> {
         let listener = TcpListener::bind(addr)
             .await
-            .map_err(|e| GatewayError::Io(e))?;
+            .map_err(GatewayError::Io)?;
 
         axum::serve(
             listener,
