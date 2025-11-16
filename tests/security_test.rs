@@ -5,6 +5,10 @@
 /// - Sensitive data redaction
 /// - TLS configuration
 /// - Input validation
+///
+/// NOTE: This file contains TEST FIXTURES ONLY - not real secrets.
+/// The tokens, API keys, and credentials below are intentionally fake
+/// and used to test the security redaction functionality.
 use api_gateway_rust::logging::{
     is_sensitive_header, redact_auth_header, redact_cookie, redact_ip_address,
     redact_sensitive_data,
@@ -12,6 +16,7 @@ use api_gateway_rust::logging::{
 
 #[test]
 fn test_redact_bearer_token_full() {
+    // ggshield:ignore - This is a test fixture, not a real secret
     let input = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
     let output = redact_sensitive_data(input);
 
@@ -25,6 +30,7 @@ fn test_redact_bearer_token_full() {
 
 #[test]
 fn test_redact_api_key_in_query() {
+    // ggshield:ignore - This is a test fixture, not a real API key
     let input = "GET /api/users?api_key=test_key_1234567890abcdefghijklmnop";
     let output = redact_sensitive_data(input);
 
@@ -34,6 +40,7 @@ fn test_redact_api_key_in_query() {
 
 #[test]
 fn test_redact_api_key_in_header() {
+    // ggshield:ignore - This is a test fixture, not a real API key
     let input = "X-API-Key: test_header_abcdefghijklmnopqrstuvwxyz123456";
     let output = redact_sensitive_data(input);
 
@@ -91,6 +98,7 @@ fn test_redact_session_token() {
 
 #[test]
 fn test_redact_multiple_sensitive_fields() {
+    // ggshield:ignore - These are test fixtures, not real secrets
     let input = r#"{
         "email": "user@example.com",
         "password": "secret123",
@@ -238,6 +246,7 @@ fn test_redact_mixed_content() {
 
 #[test]
 fn test_redact_log_message() {
+    // ggshield:ignore - These are test fixtures, not real secrets
     let input = r#"
         INFO Request received
         Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature

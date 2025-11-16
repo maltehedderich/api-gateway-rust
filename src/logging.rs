@@ -40,8 +40,10 @@ impl SensitiveDataPatterns {
             api_key: Regex::new(r#"(?i)"?(api[_-]?key|apikey)"?\s*[:=]\s*"?([a-zA-Z0-9_\-\.]+)"?"#)
                 .expect("Invalid API key regex"),
             // Match session tokens (generic token pattern)
-            session_token: Regex::new(r#"(?i)"?(session[_-]?token|token)"?\s*[:=]\s*"?([a-zA-Z0-9_\-\.]+)"?"#)
-                .expect("Invalid session token regex"),
+            session_token: Regex::new(
+                r#"(?i)"?(session[_-]?token|token)"?\s*[:=]\s*"?([a-zA-Z0-9_\-\.]+)"?"#,
+            )
+            .expect("Invalid session token regex"),
             // Match password fields
             password: Regex::new(r#"(?i)"?password"?\s*[:=]\s*"?([^",\s]+)"?"#)
                 .expect("Invalid password regex"),
@@ -66,6 +68,7 @@ fn patterns() -> &'static SensitiveDataPatterns {
 /// ```
 /// use api_gateway_rust::logging::redact_sensitive_data;
 ///
+/// // ggshield:ignore - test fixture example
 /// let input = "Authorization: Bearer abc123def456ghi789";
 /// let output = redact_sensitive_data(input);
 /// assert!(output.contains("Bearer abc1"));
