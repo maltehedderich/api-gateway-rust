@@ -190,7 +190,6 @@ impl Default for ServerConfig {
     }
 }
 
-
 /// Route configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouteConfig {

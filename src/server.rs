@@ -188,9 +188,7 @@ impl Server {
 
     /// Run the server without TLS (HTTP only)
     async fn run_without_tls(&self, addr: SocketAddr, app: Router) -> Result<(), GatewayError> {
-        let listener = TcpListener::bind(addr)
-            .await
-            .map_err(GatewayError::Io)?;
+        let listener = TcpListener::bind(addr).await.map_err(GatewayError::Io)?;
 
         axum::serve(
             listener,
