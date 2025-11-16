@@ -6,6 +6,10 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub server: ServerConfig,
+    #[serde(default)]
+    pub routes: Vec<RouteConfig>,
+    #[serde(default)]
+    pub upstreams: Vec<UpstreamConfig>,
 }
 
 /// Server configuration
@@ -91,8 +95,68 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             server: ServerConfig::default(),
+            routes: Vec::new(),
+            upstreams: Vec::new(),
         }
     }
+}
+
+/// Route configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteConfig {
+    /// Unique identifier for the route
+    pub id: String,
+
+    /// HTTP methods this route accepts (GET, POST, etc.)
+    pub methods: Vec<String>,
+
+    /// Path pattern for matching (supports exact, prefix, and parameter extraction)
+    pub path: String,
+
+    /// Upstream service identifier
+    pub upstream_id: String,
+
+    /// Path transformation for upstream (optional, defaults to original path)
+    #[serde(default)]
+    pub upstream_path: Option<String>,
+
+    /// Upstream timeout in seconds (optional, overrides upstream default)
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
+
+    /// Strip path prefix when forwarding to upstream
+    #[serde(default)]
+    pub strip_prefix: Option<String>,
+}
+
+/// Upstream service configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpstreamConfig {
+    /// Unique identifier for the upstream service
+    pub id: String,
+
+    /// Base URL of the upstream service (e.g., "http://service:8080")
+    pub base_url: String,
+
+    /// Timeout for requests to this upstream in seconds
+    #[serde(default = "default_upstream_timeout")]
+    pub timeout_secs: u64,
+
+    /// Health check endpoint path (optional)
+    #[serde(default)]
+    pub health_check_path: Option<String>,
+
+    /// Connection pool size
+    #[serde(default = "default_pool_size")]
+    pub pool_max_idle_per_host: usize,
+}
+
+fn default_upstream_timeout() -> u64 {
+    30
+}
+
+fn default_pool_size() -> usize {
+    10
 }
 
 impl Config {
@@ -177,6 +241,59 @@ impl Config {
                 return Err(GatewayError::Config(format!(
                     "Invalid TLS version: {}. Must be '1.2' or '1.3'",
                     tls.min_version
+                )));
+            }
+        }
+
+        // Validate upstreams
+        for upstream in &self.upstreams {
+            if upstream.id.is_empty() {
+                return Err(GatewayError::Config(
+                    "Upstream ID cannot be empty".to_string(),
+                ));
+            }
+
+            if upstream.base_url.is_empty() {
+                return Err(GatewayError::Config(format!(
+                    "Upstream '{}' base_url cannot be empty",
+                    upstream.id
+                )));
+            }
+
+            // Validate URL format
+            if !upstream.base_url.starts_with("http://") && !upstream.base_url.starts_with("https://") {
+                return Err(GatewayError::Config(format!(
+                    "Upstream '{}' base_url must start with http:// or https://",
+                    upstream.id
+                )));
+            }
+        }
+
+        // Validate routes
+        for route in &self.routes {
+            if route.id.is_empty() {
+                return Err(GatewayError::Config("Route ID cannot be empty".to_string()));
+            }
+
+            if route.path.is_empty() {
+                return Err(GatewayError::Config(format!(
+                    "Route '{}' path cannot be empty",
+                    route.id
+                )));
+            }
+
+            if route.methods.is_empty() {
+                return Err(GatewayError::Config(format!(
+                    "Route '{}' must have at least one method",
+                    route.id
+                )));
+            }
+
+            // Validate that the upstream exists
+            if !self.upstreams.iter().any(|u| u.id == route.upstream_id) {
+                return Err(GatewayError::Config(format!(
+                    "Route '{}' references unknown upstream '{}'",
+                    route.id, route.upstream_id
                 )));
             }
         }

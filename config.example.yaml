@@ -22,3 +22,69 @@ server:
 
   # Request timeout in seconds
   request_timeout_secs: 30
+
+# Upstream services configuration
+upstreams:
+  # Example upstream service
+  - id: "user-service"
+    base_url: "http://localhost:8081"
+    timeout_secs: 30
+    pool_max_idle_per_host: 10
+    health_check_path: "/health"
+
+  - id: "product-service"
+    base_url: "http://localhost:8082"
+    timeout_secs: 30
+    pool_max_idle_per_host: 10
+
+  - id: "order-service"
+    base_url: "http://localhost:8083"
+    timeout_secs: 30
+    pool_max_idle_per_host: 10
+
+# Routes configuration
+routes:
+  # Exact match example
+  - id: "get-users"
+    methods: ["GET"]
+    path: "/api/users"
+    upstream_id: "user-service"
+
+  # Path parameter example
+  - id: "get-user-by-id"
+    methods: ["GET"]
+    path: "/api/users/{id}"
+    upstream_id: "user-service"
+
+  # Multiple methods example
+  - id: "users-crud"
+    methods: ["POST", "PUT", "DELETE"]
+    path: "/api/users/{id}"
+    upstream_id: "user-service"
+
+  # Prefix match example (all requests starting with /api/products/)
+  - id: "product-api"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    path: "/api/products/*"
+    upstream_id: "product-service"
+
+  # Strip prefix example (removes /api/v1 before forwarding)
+  - id: "orders-v1"
+    methods: ["GET", "POST"]
+    path: "/api/v1/orders/*"
+    upstream_id: "order-service"
+    strip_prefix: "/api/v1"
+
+  # Custom upstream path example
+  - id: "legacy-orders"
+    methods: ["GET"]
+    path: "/legacy/orders"
+    upstream_id: "order-service"
+    upstream_path: "/api/orders"
+
+  # Custom timeout example
+  - id: "slow-operation"
+    methods: ["POST"]
+    path: "/api/reports/generate"
+    upstream_id: "product-service"
+    timeout_secs: 120
