@@ -61,12 +61,15 @@ fn create_token(
 /// Helper to create auth config
 fn create_auth_config(secret: &str) -> AuthConfig {
     AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: None,
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     }
 }
 
@@ -430,6 +433,7 @@ fn test_e2e_route_configuration_integration() {
             auth_required: true,
             required_roles: vec!["admin".to_string()],
             required_permissions: vec![],
+            rate_limit: None,
         },
         RouteConfig {
             id: "protected-route".to_string(),
@@ -442,6 +446,7 @@ fn test_e2e_route_configuration_integration() {
             auth_required: true,
             required_roles: vec![],
             required_permissions: vec!["orders:create".to_string()],
+            rate_limit: None,
         },
     ];
 

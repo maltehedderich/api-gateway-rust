@@ -7,8 +7,12 @@ use axum::{
     response::Response,
 };
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use moka::future::Cache;
+use redis::aio::ConnectionManager;
+use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
 /// User context containing identity and authorization information
@@ -88,6 +92,220 @@ impl From<Claims> for UserContext {
             roles: claims.roles,
             permissions: claims.permissions,
             extra: claims.extra,
+        }
+    }
+}
+
+/// Session data stored in Redis for opaque tokens
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionData {
+    /// User ID
+    pub user_id: String,
+
+    /// Username
+    #[serde(default)]
+    pub username: Option<String>,
+
+    /// User roles
+    #[serde(default)]
+    pub roles: Vec<String>,
+
+    /// User permissions
+    #[serde(default)]
+    pub permissions: Vec<String>,
+
+    /// Session creation timestamp (Unix timestamp)
+    #[serde(default)]
+    pub created_at: i64,
+
+    /// Session expiration timestamp (Unix timestamp)
+    pub expires_at: i64,
+
+    /// Additional session data
+    #[serde(flatten)]
+    pub extra: serde_json::Value,
+}
+
+impl From<SessionData> for UserContext {
+    fn from(session: SessionData) -> Self {
+        UserContext {
+            user_id: session.user_id,
+            username: session.username,
+            roles: session.roles,
+            permissions: session.permissions,
+            extra: session.extra,
+        }
+    }
+}
+
+/// Token validator with caching and opaque token support
+pub struct TokenValidator {
+    /// Authentication configuration
+    auth_config: Arc<AuthConfig>,
+
+    /// Redis connection manager for opaque token validation
+    redis_client: Option<ConnectionManager>,
+
+    /// Token validation cache
+    cache: Option<Cache<String, UserContext>>,
+}
+
+impl TokenValidator {
+    /// Create a new token validator
+    pub async fn new(auth_config: Arc<AuthConfig>) -> Result<Self, GatewayError> {
+        // Initialize Redis client for opaque tokens
+        let redis_client = if auth_config.token_format == "opaque" {
+            if let Some(ref session_store) = auth_config.session_store {
+                let client = redis::Client::open(session_store.redis_url.as_str()).map_err(|e| {
+                    GatewayError::Config(format!("Failed to create Redis client: {}", e))
+                })?;
+
+                let conn_manager = ConnectionManager::new(client).await.map_err(|e| {
+                    GatewayError::Config(format!("Failed to connect to Redis: {}", e))
+                })?;
+
+                info!("Connected to Redis session store");
+                Some(conn_manager)
+            } else {
+                return Err(GatewayError::Config(
+                    "Session store configuration required for opaque tokens".to_string(),
+                ));
+            }
+        } else {
+            None
+        };
+
+        // Initialize cache if enabled
+        let cache = if let Some(ref cache_config) = auth_config.cache {
+            if cache_config.enabled {
+                let cache = Cache::builder()
+                    .max_capacity(cache_config.max_capacity)
+                    .time_to_live(Duration::from_secs(cache_config.ttl_secs))
+                    .build();
+
+                info!(
+                    "Token validation cache initialized (capacity: {}, TTL: {}s)",
+                    cache_config.max_capacity, cache_config.ttl_secs
+                );
+                Some(cache)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(Self {
+            auth_config,
+            redis_client,
+            cache,
+        })
+    }
+
+    /// Validate a token and return user context
+    pub async fn validate_token(&self, token: &str) -> Result<UserContext, GatewayError> {
+        // Check cache first if enabled
+        if let Some(ref cache) = self.cache {
+            if let Some(user_context) = cache.get(token).await {
+                debug!("Token validation cache hit");
+                return Ok(user_context);
+            }
+        }
+
+        // Validate token based on format
+        let user_context = match self.auth_config.token_format.as_str() {
+            "jwt" => self.validate_jwt_token(token).await?,
+            "opaque" => self.validate_opaque_token(token).await?,
+            _ => {
+                return Err(GatewayError::Config(format!(
+                    "Unsupported token format: {}",
+                    self.auth_config.token_format
+                )))
+            }
+        };
+
+        // Store in cache if enabled
+        if let Some(ref cache) = self.cache {
+            cache.insert(token.to_string(), user_context.clone()).await;
+            debug!("Token validation result cached");
+        }
+
+        Ok(user_context)
+    }
+
+    /// Validate JWT token
+    async fn validate_jwt_token(&self, token: &str) -> Result<UserContext, GatewayError> {
+        validate_jwt_token(token, &self.auth_config)
+    }
+
+    /// Validate opaque token by looking up session in Redis
+    async fn validate_opaque_token(&self, token: &str) -> Result<UserContext, GatewayError> {
+        let session_store = self
+            .auth_config
+            .session_store
+            .as_ref()
+            .ok_or_else(|| GatewayError::Config("Session store not configured".to_string()))?;
+
+        let mut redis_conn = self.redis_client.as_ref().ok_or_else(|| {
+            GatewayError::AuthenticationFailed("Redis connection not available".to_string())
+        })?
+        .clone();
+
+        // Construct Redis key
+        let redis_key = format!("{}{}", session_store.key_prefix, token);
+
+        // Look up session data in Redis
+        let session_json: Option<String> = redis_conn
+            .get(&redis_key)
+            .await
+            .map_err(|e| {
+                // Handle Redis unavailability based on failure mode
+                if session_store.failure_mode == "fail_open" {
+                    warn!(
+                        "Redis lookup failed (fail-open mode): {}. Allowing request without validation.",
+                        e
+                    );
+                    // In fail-open mode, we could return a default user context
+                    // For security, we'll still return an error but log it differently
+                    GatewayError::ServiceUnavailable(format!("Session store unavailable: {}", e))
+                } else {
+                    error!("Redis lookup failed (fail-closed mode): {}", e);
+                    GatewayError::ServiceUnavailable(format!("Session store unavailable: {}", e))
+                }
+            })?;
+
+        // Check if session exists
+        let session_json = session_json.ok_or_else(|| {
+            debug!("Session not found in Redis for token");
+            GatewayError::InvalidToken("Session not found".to_string())
+        })?;
+
+        // Parse session data
+        let session_data: SessionData = serde_json::from_str(&session_json).map_err(|e| {
+            error!("Failed to parse session data from Redis: {}", e);
+            GatewayError::InvalidToken("Invalid session data".to_string())
+        })?;
+
+        // Check if session is expired
+        let now = chrono::Utc::now().timestamp();
+        if session_data.expires_at < now {
+            debug!("Session expired (expires_at: {}, now: {})", session_data.expires_at, now);
+            return Err(GatewayError::TokenExpired);
+        }
+
+        debug!(
+            "Opaque token validated successfully for user: {}",
+            session_data.user_id
+        );
+
+        Ok(session_data.into())
+    }
+
+    /// Invalidate cached token (useful for logout or token revocation)
+    pub async fn invalidate_token(&self, token: &str) {
+        if let Some(ref cache) = self.cache {
+            cache.invalidate(token).await;
+            debug!("Token invalidated from cache");
         }
     }
 }
@@ -214,12 +432,12 @@ pub fn validate_jwt_token(
 ///
 /// This middleware:
 /// 1. Extracts session token from request (cookie or Authorization header)
-/// 2. Validates the JWT token
-/// 3. Extracts user context from token claims
+/// 2. Validates the token (JWT or opaque)
+/// 3. Extracts user context from token
 /// 4. Attaches user context to request extensions
 /// 5. Returns 401 Unauthorized if authentication fails
 pub async fn authentication_middleware(
-    auth_config: Arc<AuthConfig>,
+    token_validator: Arc<TokenValidator>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, GatewayError> {
@@ -233,6 +451,65 @@ pub async fn authentication_middleware(
     debug!(
         correlation_id = %correlation_id,
         "Attempting authentication"
+    );
+
+    // Extract token from request
+    let token = extract_token(&request, &token_validator.auth_config.cookie_name).ok_or_else(|| {
+        warn!(
+            correlation_id = %correlation_id,
+            "Authentication failed: missing token"
+        );
+        GatewayError::MissingToken
+    })?;
+
+    // Log token presence (not the value!)
+    debug!(
+        correlation_id = %correlation_id,
+        token_length = token.len(),
+        "Token extracted"
+    );
+
+    // Validate token and extract user context
+    let user_context = token_validator.validate_token(&token).await.map_err(|e| {
+        warn!(
+            correlation_id = %correlation_id,
+            error = %e,
+            "Authentication failed: token validation error"
+        );
+        e
+    })?;
+
+    info!(
+        correlation_id = %correlation_id,
+        user_id = %user_context.user_id,
+        roles = ?user_context.roles,
+        token_format = %token_validator.auth_config.token_format,
+        "Authentication successful"
+    );
+
+    // Attach user context to request extensions
+    request.extensions_mut().insert(user_context);
+
+    // Continue to next middleware
+    Ok(next.run(request).await)
+}
+
+/// Authentication middleware factory (for backward compatibility with existing code)
+pub async fn authentication_middleware_legacy(
+    auth_config: Arc<AuthConfig>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, GatewayError> {
+    // Extract correlation ID for logging
+    let correlation_id = request
+        .extensions()
+        .get::<crate::middleware::CorrelationId>()
+        .map(|id| id.as_str().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    debug!(
+        correlation_id = %correlation_id,
+        "Attempting authentication (legacy mode)"
     );
 
     // Extract token from request

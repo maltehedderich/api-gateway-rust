@@ -97,12 +97,15 @@ fn test_authentication_flow_success() {
     let token = create_test_token(user_id, roles.clone(), permissions.clone(), secret, false);
 
     let auth_config = AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: None,
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     };
 
     let result = api_gateway_rust::auth::validate_jwt_token(&token, &auth_config);
@@ -124,12 +127,15 @@ fn test_authentication_flow_expired_token() {
     let token = create_test_token(user_id, roles, permissions, secret, true);
 
     let auth_config = AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: None,
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     };
 
     let result = api_gateway_rust::auth::validate_jwt_token(&token, &auth_config);
@@ -152,12 +158,15 @@ fn test_authentication_with_issuer_validation() {
     );
 
     let auth_config = AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: Some(expected_issuer.to_string()),
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     };
 
     let result = api_gateway_rust::auth::validate_jwt_token(&token, &auth_config);
@@ -196,12 +205,15 @@ fn test_authentication_with_audience_validation() {
     );
 
     let auth_config = AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: None,
         jwt_audience: Some(expected_audience.to_string()),
+        session_store: None,
+        cache: None,
     };
 
     let result = api_gateway_rust::auth::validate_jwt_token(&token, &auth_config);
@@ -385,12 +397,15 @@ fn test_invalid_token_signature() {
     );
 
     let auth_config = AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(wrong_secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: None,
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     };
 
     let result = api_gateway_rust::auth::validate_jwt_token(&token, &auth_config);

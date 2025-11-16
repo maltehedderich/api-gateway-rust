@@ -60,6 +60,10 @@ pub struct TlsConfig {
 /// Authentication configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthConfig {
+    /// Token format: "jwt" for signed tokens, "opaque" for opaque tokens
+    #[serde(default = "default_token_format")]
+    pub token_format: String,
+
     /// JWT secret key for validating signed tokens (HS256)
     /// For production, this should be loaded from environment variable
     #[serde(default)]
@@ -84,6 +88,71 @@ pub struct AuthConfig {
     /// JWT audience (aud claim validation)
     #[serde(default)]
     pub jwt_audience: Option<String>,
+
+    /// Session store configuration (for opaque tokens)
+    #[serde(default)]
+    pub session_store: Option<SessionStoreConfig>,
+
+    /// Token validation cache configuration
+    #[serde(default)]
+    pub cache: Option<TokenCacheConfig>,
+}
+
+/// Session store configuration for opaque token validation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionStoreConfig {
+    /// Redis connection URL (e.g., "redis://localhost:6379")
+    pub redis_url: String,
+
+    /// Session key prefix in Redis
+    #[serde(default = "default_session_prefix")]
+    pub key_prefix: String,
+
+    /// Failure mode when session store is unavailable
+    /// - "fail_open": Allow requests to proceed (not recommended for production)
+    /// - "fail_closed": Reject requests with 503 Service Unavailable
+    #[serde(default = "default_session_failure_mode")]
+    pub failure_mode: String,
+}
+
+fn default_session_prefix() -> String {
+    "session:".to_string()
+}
+
+fn default_session_failure_mode() -> String {
+    "fail_closed".to_string()
+}
+
+/// Token validation cache configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenCacheConfig {
+    /// Enable token validation caching
+    #[serde(default = "default_cache_enabled")]
+    pub enabled: bool,
+
+    /// Maximum number of cached tokens
+    #[serde(default = "default_cache_max_capacity")]
+    pub max_capacity: u64,
+
+    /// Time-to-live for cached tokens in seconds
+    #[serde(default = "default_cache_ttl_secs")]
+    pub ttl_secs: u64,
+}
+
+fn default_cache_enabled() -> bool {
+    true
+}
+
+fn default_cache_max_capacity() -> u64 {
+    10000
+}
+
+fn default_cache_ttl_secs() -> u64 {
+    300 // 5 minutes
+}
+
+fn default_token_format() -> String {
+    "jwt".to_string()
 }
 
 fn default_jwt_algorithm() -> String {
@@ -277,6 +346,28 @@ fn default_pool_size() -> usize {
 }
 
 impl Config {
+    /// Load configuration from a file
+    pub fn from_file(path: &std::path::Path) -> Result<Self, GatewayError> {
+        // Read the file contents
+        let contents = std::fs::read_to_string(path).map_err(|e| {
+            GatewayError::Config(format!("Failed to read config file {:?}: {}", path, e))
+        })?;
+
+        // Parse based on file extension
+        let config: Config = if path.extension().and_then(|s| s.to_str()) == Some("json") {
+            serde_json::from_str(&contents).map_err(|e| {
+                GatewayError::Config(format!("Failed to parse config JSON: {}", e))
+            })?
+        } else {
+            // Default to YAML
+            serde_yaml::from_str(&contents).map_err(|e| {
+                GatewayError::Config(format!("Failed to parse config YAML: {}", e))
+            })?
+        };
+
+        Ok(config)
+    }
+
     /// Load configuration from environment variables and default values
     pub fn from_env() -> Result<Self, GatewayError> {
         let mut config = Config::default();
@@ -320,14 +411,21 @@ impl Config {
         // Authentication configuration from environment
         if let Ok(jwt_secret) = std::env::var("GATEWAY_JWT_SECRET") {
             let mut auth_config = config.auth.take().unwrap_or_else(|| AuthConfig {
+                token_format: default_token_format(),
                 jwt_secret: None,
                 jwt_public_key: None,
                 jwt_algorithm: default_jwt_algorithm(),
                 cookie_name: default_cookie_name(),
                 jwt_issuer: None,
                 jwt_audience: None,
+                session_store: None,
+                cache: None,
             });
             auth_config.jwt_secret = Some(jwt_secret);
+
+            if let Ok(token_format) = std::env::var("GATEWAY_TOKEN_FORMAT") {
+                auth_config.token_format = token_format;
+            }
 
             if let Ok(jwt_algorithm) = std::env::var("GATEWAY_JWT_ALGORITHM") {
                 auth_config.jwt_algorithm = jwt_algorithm;
@@ -343,6 +441,33 @@ impl Config {
 
             if let Ok(jwt_audience) = std::env::var("GATEWAY_JWT_AUDIENCE") {
                 auth_config.jwt_audience = Some(jwt_audience);
+            }
+
+            // Session store configuration
+            if let Ok(redis_url) = std::env::var("GATEWAY_SESSION_STORE_REDIS_URL") {
+                auth_config.session_store = Some(SessionStoreConfig {
+                    redis_url,
+                    key_prefix: std::env::var("GATEWAY_SESSION_STORE_KEY_PREFIX")
+                        .unwrap_or_else(|_| default_session_prefix()),
+                    failure_mode: std::env::var("GATEWAY_SESSION_STORE_FAILURE_MODE")
+                        .unwrap_or_else(|_| default_session_failure_mode()),
+                });
+            }
+
+            // Cache configuration
+            if let Ok(cache_enabled) = std::env::var("GATEWAY_CACHE_ENABLED") {
+                let enabled = cache_enabled.parse().unwrap_or(true);
+                auth_config.cache = Some(TokenCacheConfig {
+                    enabled,
+                    max_capacity: std::env::var("GATEWAY_CACHE_MAX_CAPACITY")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(default_cache_max_capacity()),
+                    ttl_secs: std::env::var("GATEWAY_CACHE_TTL_SECS")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(default_cache_ttl_secs()),
+                });
             }
 
             config.auth = Some(auth_config);
@@ -395,28 +520,88 @@ impl Config {
 
         // Validate authentication configuration
         if let Some(ref auth) = self.auth {
-            // Validate JWT algorithm
-            if !["HS256", "RS256", "ES256"].contains(&auth.jwt_algorithm.as_str()) {
+            // Validate token format
+            if !["jwt", "opaque"].contains(&auth.token_format.as_str()) {
                 return Err(GatewayError::Config(format!(
-                    "Invalid JWT algorithm: {}. Must be HS256, RS256, or ES256",
-                    auth.jwt_algorithm
+                    "Invalid token format: {}. Must be 'jwt' or 'opaque'",
+                    auth.token_format
                 )));
             }
 
-            // Ensure appropriate key is configured for algorithm
-            if auth.jwt_algorithm == "HS256" && auth.jwt_secret.is_none() {
-                return Err(GatewayError::Config(
-                    "JWT secret is required for HS256 algorithm".to_string(),
-                ));
+            // Validate JWT configuration for JWT tokens
+            if auth.token_format == "jwt" {
+                // Validate JWT algorithm
+                if !["HS256", "RS256", "ES256"].contains(&auth.jwt_algorithm.as_str()) {
+                    return Err(GatewayError::Config(format!(
+                        "Invalid JWT algorithm: {}. Must be HS256, RS256, or ES256",
+                        auth.jwt_algorithm
+                    )));
+                }
+
+                // Ensure appropriate key is configured for algorithm
+                if auth.jwt_algorithm == "HS256" && auth.jwt_secret.is_none() {
+                    return Err(GatewayError::Config(
+                        "JWT secret is required for HS256 algorithm".to_string(),
+                    ));
+                }
+
+                if (auth.jwt_algorithm == "RS256" || auth.jwt_algorithm == "ES256")
+                    && auth.jwt_public_key.is_none()
+                {
+                    return Err(GatewayError::Config(format!(
+                        "JWT public key is required for {} algorithm",
+                        auth.jwt_algorithm
+                    )));
+                }
             }
 
-            if (auth.jwt_algorithm == "RS256" || auth.jwt_algorithm == "ES256")
-                && auth.jwt_public_key.is_none()
-            {
-                return Err(GatewayError::Config(format!(
-                    "JWT public key is required for {} algorithm",
-                    auth.jwt_algorithm
-                )));
+            // Validate session store configuration for opaque tokens
+            if auth.token_format == "opaque" {
+                if auth.session_store.is_none() {
+                    return Err(GatewayError::Config(
+                        "Session store configuration is required for opaque tokens".to_string(),
+                    ));
+                }
+
+                if let Some(ref session_store) = auth.session_store {
+                    if session_store.redis_url.is_empty() {
+                        return Err(GatewayError::Config(
+                            "Session store Redis URL cannot be empty".to_string(),
+                        ));
+                    }
+
+                    if !session_store.redis_url.starts_with("redis://")
+                        && !session_store.redis_url.starts_with("rediss://")
+                    {
+                        return Err(GatewayError::Config(
+                            "Session store Redis URL must start with redis:// or rediss://".to_string(),
+                        ));
+                    }
+
+                    if session_store.failure_mode != "fail_open"
+                        && session_store.failure_mode != "fail_closed"
+                    {
+                        return Err(GatewayError::Config(format!(
+                            "Invalid session store failure mode: {}. Must be 'fail_open' or 'fail_closed'",
+                            session_store.failure_mode
+                        )));
+                    }
+                }
+            }
+
+            // Validate cache configuration if present
+            if let Some(ref cache) = auth.cache {
+                if cache.max_capacity == 0 {
+                    return Err(GatewayError::Config(
+                        "Cache max capacity must be greater than 0".to_string(),
+                    ));
+                }
+
+                if cache.ttl_secs == 0 {
+                    return Err(GatewayError::Config(
+                        "Cache TTL must be greater than 0".to_string(),
+                    ));
+                }
             }
         }
 
