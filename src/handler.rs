@@ -202,11 +202,8 @@ pub async fn handle_request(
             // Rate limiting check
             if let Some(ref rate_limiter) = state.rate_limiter {
                 // Determine which rate limit policy to use (route-specific or global)
-                let rate_limit_policy = route.rate_limit.as_ref().or({
-                    // Try to get global default policy
-                    // Note: We would need to store this in AppState, but for now we'll just skip if no route policy
-                    None
-                });
+                // Note: We would need to store global default policy in AppState, but for now we'll just use route policy
+                let rate_limit_policy = route.rate_limit.as_ref();
 
                 if let Some(policy) = rate_limit_policy {
                     let rate_limit_timer = DurationTimer::new();

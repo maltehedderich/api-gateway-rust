@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build Release Binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-git-
+
+      - name: Build release binary
+        run: cargo build --release --verbose
+
+      - name: Strip binary
+        run: strip target/release/api-gateway-rust
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create tarball
+        run: |
+          cd target/release
+          tar -czf api-gateway-rust-${{ steps.version.outputs.VERSION }}-x86_64-linux.tar.gz api-gateway-rust
+          cd ../..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-gateway-rust-${{ steps.version.outputs.VERSION }}-x86_64-linux
+          path: target/release/api-gateway-rust-${{ steps.version.outputs.VERSION }}-x86_64-linux.tar.gz
+          retention-days: 90
