@@ -55,12 +55,15 @@ fn create_token(user_id: &str, roles: Vec<&str>, permissions: Vec<&str>, secret:
 /// Helper to create auth config
 fn create_auth_config(secret: &str) -> AuthConfig {
     AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: None,
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     }
 }
 

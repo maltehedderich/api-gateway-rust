@@ -20,12 +20,15 @@ fn test_valid_hs256_token() {
 
     // Create auth config
     let auth_config = AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: None,
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     };
 
     // Create test claims
@@ -67,12 +70,15 @@ fn test_expired_token() {
     let secret = "test-secret-key-for-testing-purposes";
 
     let auth_config = AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: None,
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     };
 
     // Create expired claims (exp in the past)
@@ -108,12 +114,15 @@ fn test_invalid_signature() {
     let wrong_secret = "wrong-secret-key";
 
     let auth_config = AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(wrong_secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: None,
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     };
 
     let now = SystemTime::now()
@@ -152,12 +161,15 @@ fn test_token_with_issuer_validation() {
     let expected_issuer = "https://auth.example.com";
 
     let auth_config = AuthConfig {
+        token_format: "jwt".to_string(),
         jwt_secret: Some(secret.to_string()),
         jwt_public_key: None,
         jwt_algorithm: "HS256".to_string(),
         cookie_name: "session_token".to_string(),
         jwt_issuer: Some(expected_issuer.to_string()),
         jwt_audience: None,
+        session_store: None,
+        cache: None,
     };
 
     let now = SystemTime::now()
