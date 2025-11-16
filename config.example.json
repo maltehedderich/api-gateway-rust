@@ -1,0 +1,80 @@
+{
+  "server": {
+    "bind_address": "0.0.0.0",
+    "port": 8443,
+    "connection_timeout_secs": 60,
+    "max_connections": 10000,
+    "request_timeout_secs": 30,
+    "tls": {
+      "cert_path": "/path/to/cert.pem",
+      "key_path": "/path/to/key.pem",
+      "min_version": "1.2"
+    }
+  },
+  "auth": {
+    "jwt_secret": "your-secret-key-here",
+    "jwt_algorithm": "HS256",
+    "cookie_name": "session_token",
+    "jwt_issuer": "https://auth.example.com",
+    "jwt_audience": "api-gateway"
+  },
+  "upstreams": [
+    {
+      "id": "user-service",
+      "base_url": "http://user-service:8080",
+      "timeout_secs": 30,
+      "health_check_path": "/health",
+      "pool_max_idle_per_host": 10
+    },
+    {
+      "id": "order-service",
+      "base_url": "http://order-service:8080",
+      "timeout_secs": 30,
+      "health_check_path": "/health",
+      "pool_max_idle_per_host": 10
+    }
+  ],
+  "routes": [
+    {
+      "id": "public-health",
+      "methods": ["GET"],
+      "path": "/api/health",
+      "upstream_id": "user-service",
+      "auth_required": false
+    },
+    {
+      "id": "get-users",
+      "methods": ["GET"],
+      "path": "/api/users",
+      "upstream_id": "user-service",
+      "auth_required": true,
+      "required_permissions": ["users:read"]
+    },
+    {
+      "id": "create-user",
+      "methods": ["POST"],
+      "path": "/api/users",
+      "upstream_id": "user-service",
+      "auth_required": true,
+      "required_roles": ["admin"],
+      "required_permissions": ["users:write"]
+    },
+    {
+      "id": "get-user-by-id",
+      "methods": ["GET"],
+      "path": "/api/users/{id}",
+      "upstream_id": "user-service",
+      "auth_required": true,
+      "required_permissions": ["users:read"]
+    },
+    {
+      "id": "admin-orders",
+      "methods": ["GET", "POST", "PUT", "DELETE"],
+      "path": "/api/orders/*",
+      "upstream_id": "order-service",
+      "strip_prefix": "/api",
+      "auth_required": true,
+      "required_roles": ["admin", "order_manager"]
+    }
+  ]
+}

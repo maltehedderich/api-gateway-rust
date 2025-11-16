@@ -22,6 +22,9 @@ pub struct Route {
     pub upstream_path: Option<String>,
     pub timeout_secs: Option<u64>,
     pub strip_prefix: Option<String>,
+    pub auth_required: bool,
+    pub required_roles: Vec<String>,
+    pub required_permissions: Vec<String>,
 }
 
 /// Path pattern for route matching
@@ -102,6 +105,9 @@ impl Router {
                 upstream_path: route_config.upstream_path,
                 timeout_secs: route_config.timeout_secs,
                 strip_prefix: route_config.strip_prefix,
+                auth_required: route_config.auth_required,
+                required_roles: route_config.required_roles,
+                required_permissions: route_config.required_permissions,
             });
         }
 

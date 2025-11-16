@@ -10,6 +10,8 @@ pub struct Config {
     pub routes: Vec<RouteConfig>,
     #[serde(default)]
     pub upstreams: Vec<UpstreamConfig>,
+    #[serde(default)]
+    pub auth: Option<AuthConfig>,
 }
 
 /// Server configuration
@@ -51,6 +53,43 @@ pub struct TlsConfig {
     /// Minimum TLS version (1.2 or 1.3)
     #[serde(default = "default_min_tls_version")]
     pub min_version: String,
+}
+
+/// Authentication configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthConfig {
+    /// JWT secret key for validating signed tokens (HS256)
+    /// For production, this should be loaded from environment variable
+    #[serde(default)]
+    pub jwt_secret: Option<String>,
+
+    /// JWT public key for validating signed tokens (RS256, ES256)
+    #[serde(default)]
+    pub jwt_public_key: Option<String>,
+
+    /// JWT algorithm (HS256, RS256, ES256)
+    #[serde(default = "default_jwt_algorithm")]
+    pub jwt_algorithm: String,
+
+    /// Cookie name for session token
+    #[serde(default = "default_cookie_name")]
+    pub cookie_name: String,
+
+    /// JWT issuer (iss claim validation)
+    #[serde(default)]
+    pub jwt_issuer: Option<String>,
+
+    /// JWT audience (aud claim validation)
+    #[serde(default)]
+    pub jwt_audience: Option<String>,
+}
+
+fn default_jwt_algorithm() -> String {
+    "HS256".to_string()
+}
+
+fn default_cookie_name() -> String {
+    "session_token".to_string()
 }
 
 // Default values
@@ -97,6 +136,7 @@ impl Default for Config {
             server: ServerConfig::default(),
             routes: Vec::new(),
             upstreams: Vec::new(),
+            auth: None,
         }
     }
 }
@@ -127,6 +167,18 @@ pub struct RouteConfig {
     /// Strip path prefix when forwarding to upstream
     #[serde(default)]
     pub strip_prefix: Option<String>,
+
+    /// Authentication requirement (optional, defaults to no authentication)
+    #[serde(default)]
+    pub auth_required: bool,
+
+    /// Required roles for authorization (RBAC - any role in list grants access)
+    #[serde(default)]
+    pub required_roles: Vec<String>,
+
+    /// Required permissions for authorization (PBAC - all permissions required)
+    #[serde(default)]
+    pub required_permissions: Vec<String>,
 }
 
 /// Upstream service configuration
@@ -200,6 +252,37 @@ impl Config {
                 .map_err(|e| GatewayError::Config(format!("Invalid max connections: {}", e)))?;
         }
 
+        // Authentication configuration from environment
+        if let Ok(jwt_secret) = std::env::var("GATEWAY_JWT_SECRET") {
+            let mut auth_config = config.auth.take().unwrap_or_else(|| AuthConfig {
+                jwt_secret: None,
+                jwt_public_key: None,
+                jwt_algorithm: default_jwt_algorithm(),
+                cookie_name: default_cookie_name(),
+                jwt_issuer: None,
+                jwt_audience: None,
+            });
+            auth_config.jwt_secret = Some(jwt_secret);
+
+            if let Ok(jwt_algorithm) = std::env::var("GATEWAY_JWT_ALGORITHM") {
+                auth_config.jwt_algorithm = jwt_algorithm;
+            }
+
+            if let Ok(cookie_name) = std::env::var("GATEWAY_COOKIE_NAME") {
+                auth_config.cookie_name = cookie_name;
+            }
+
+            if let Ok(jwt_issuer) = std::env::var("GATEWAY_JWT_ISSUER") {
+                auth_config.jwt_issuer = Some(jwt_issuer);
+            }
+
+            if let Ok(jwt_audience) = std::env::var("GATEWAY_JWT_AUDIENCE") {
+                auth_config.jwt_audience = Some(jwt_audience);
+            }
+
+            config.auth = Some(auth_config);
+        }
+
         Ok(config)
     }
 
@@ -241,6 +324,33 @@ impl Config {
                 return Err(GatewayError::Config(format!(
                     "Invalid TLS version: {}. Must be '1.2' or '1.3'",
                     tls.min_version
+                )));
+            }
+        }
+
+        // Validate authentication configuration
+        if let Some(ref auth) = self.auth {
+            // Validate JWT algorithm
+            if !["HS256", "RS256", "ES256"].contains(&auth.jwt_algorithm.as_str()) {
+                return Err(GatewayError::Config(format!(
+                    "Invalid JWT algorithm: {}. Must be HS256, RS256, or ES256",
+                    auth.jwt_algorithm
+                )));
+            }
+
+            // Ensure appropriate key is configured for algorithm
+            if auth.jwt_algorithm == "HS256" && auth.jwt_secret.is_none() {
+                return Err(GatewayError::Config(
+                    "JWT secret is required for HS256 algorithm".to_string(),
+                ));
+            }
+
+            if (auth.jwt_algorithm == "RS256" || auth.jwt_algorithm == "ES256")
+                && auth.jwt_public_key.is_none()
+            {
+                return Err(GatewayError::Config(format!(
+                    "JWT public key is required for {} algorithm",
+                    auth.jwt_algorithm
                 )));
             }
         }

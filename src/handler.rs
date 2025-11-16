@@ -1,19 +1,23 @@
+use crate::auth::validate_jwt_token;
+use crate::config::AuthConfig;
 use crate::error::GatewayError;
 use crate::middleware::CorrelationId;
 use crate::routing::Router;
 use crate::upstream::{build_upstream_uri, UpstreamClient};
 use axum::{
     extract::{Request, State},
+    http::header,
     response::Response,
 };
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Shared application state
 #[derive(Clone)]
 pub struct AppState {
     pub router: Router,
     pub upstream_client: UpstreamClient,
+    pub auth_config: Option<Arc<AuthConfig>>,
 }
 
 /// Main request handler that routes and forwards requests to upstream services
@@ -51,8 +55,118 @@ pub async fn handle_request(
                 upstream_id = %route.upstream.id,
                 method = %method,
                 path = %uri.path(),
+                auth_required = route.auth_required,
                 "Route matched"
             );
+
+            // Perform authentication if required for this route
+            let user_context = if route.auth_required {
+                debug!(
+                    correlation_id = %correlation_id,
+                    route_id = %route.id,
+                    "Authentication required for route"
+                );
+
+                // Extract token from request
+                let token = extract_token(&request, &state.auth_config)
+                    .ok_or_else(|| {
+                        warn!(
+                            correlation_id = %correlation_id,
+                            route_id = %route.id,
+                            "Authentication failed: missing token"
+                        );
+                        GatewayError::MissingToken
+                    })?;
+
+                // Validate token
+                let auth_config = state.auth_config.as_ref().ok_or_else(|| {
+                    error!(
+                        correlation_id = %correlation_id,
+                        "Authentication required but auth config not found"
+                    );
+                    GatewayError::AuthenticationFailed(
+                        "Authentication not configured".to_string()
+                    )
+                })?;
+
+                let user = validate_jwt_token(&token, auth_config).map_err(|e| {
+                    warn!(
+                        correlation_id = %correlation_id,
+                        route_id = %route.id,
+                        error = %e,
+                        "Authentication failed: token validation error"
+                    );
+                    e
+                })?;
+
+                info!(
+                    correlation_id = %correlation_id,
+                    route_id = %route.id,
+                    user_id = %user.user_id,
+                    roles = ?user.roles,
+                    "Authentication successful"
+                );
+
+                Some(user)
+            } else {
+                None
+            };
+
+            // Perform authorization if required (check roles and permissions)
+            if let Some(ref user) = user_context {
+                // Check roles (RBAC - any matching role grants access)
+                if !route.required_roles.is_empty() {
+                    let has_required_role = user
+                        .roles
+                        .iter()
+                        .any(|role| route.required_roles.contains(role));
+
+                    if !has_required_role {
+                        warn!(
+                            correlation_id = %correlation_id,
+                            route_id = %route.id,
+                            user_id = %user.user_id,
+                            user_roles = ?user.roles,
+                            required_roles = ?route.required_roles,
+                            "Authorization failed: insufficient roles"
+                        );
+                        return Err(GatewayError::InsufficientPermissions {
+                            required_roles: route.required_roles.clone(),
+                            user_roles: user.roles.clone(),
+                        });
+                    }
+                }
+
+                // Check permissions (PBAC - all required permissions must be present)
+                if !route.required_permissions.is_empty() {
+                    let has_all_permissions = route
+                        .required_permissions
+                        .iter()
+                        .all(|perm| user.permissions.contains(perm));
+
+                    if !has_all_permissions {
+                        warn!(
+                            correlation_id = %correlation_id,
+                            route_id = %route.id,
+                            user_id = %user.user_id,
+                            user_permissions = ?user.permissions,
+                            required_permissions = ?route.required_permissions,
+                            "Authorization failed: insufficient permissions"
+                        );
+                        return Err(GatewayError::InsufficientPermissions {
+                            required_roles: vec![],
+                            user_roles: vec![],
+                        });
+                    }
+                }
+
+                info!(
+                    correlation_id = %correlation_id,
+                    route_id = %route.id,
+                    user_id = %user.user_id,
+                    "Authorization successful"
+                );
+            }
 
             // Build upstream URI
             let upstream_uri = build_upstream_uri(
@@ -103,4 +217,42 @@ pub async fn handle_request(
             }
         }
     }
+}
+
+/// Extract session token from request
+///
+/// Looks for token in:
+/// 1. Cookie (with configured cookie name)
+/// 2. Authorization header (Bearer scheme)
+fn extract_token(request: &Request, auth_config: &Option<Arc<AuthConfig>>) -> Option<String> {
+    let cookie_name = auth_config
+        .as_ref()
+        .map(|c| c.cookie_name.as_str())
+        .unwrap_or("session_token");
+
+    // Try cookie first
+    if let Some(cookie_header) = request.headers().get(header::COOKIE) {
+        if let Ok(cookie_str) = cookie_header.to_str() {
+            // Parse cookies
+            for cookie in cookie_str.split(';') {
+                let cookie = cookie.trim();
+                if let Some((name, value)) = cookie.split_once('=') {
+                    if name == cookie_name {
+                        return Some(value.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Try Authorization header (Bearer token)
+    if let Some(auth_header) = request.headers().get(header::AUTHORIZATION) {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if let Some(token) = auth_str.strip_prefix("Bearer ") {
+                return Some(token.to_string());
+            }
+        }
+    }
+
+    None
 }
