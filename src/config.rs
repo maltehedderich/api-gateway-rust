@@ -14,6 +14,10 @@ pub struct Config {
     pub auth: Option<AuthConfig>,
     #[serde(default)]
     pub rate_limiting: Option<RateLimitingConfig>,
+    #[serde(default)]
+    pub logging: Option<LoggingConfig>,
+    #[serde(default)]
+    pub observability: Option<ObservabilityConfig>,
 }
 
 /// Server configuration
@@ -331,6 +335,315 @@ fn default_upstream_timeout() -> u64 {
 
 fn default_pool_size() -> usize {
     10
+}
+
+/// Logging configuration for centralized log aggregation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoggingConfig {
+    /// Log level (ERROR, WARN, INFO, DEBUG, TRACE)
+    #[serde(default = "default_log_level")]
+    pub level: String,
+
+    /// Log format (json, text)
+    #[serde(default = "default_log_format")]
+    pub format: String,
+
+    /// Enable structured JSON logging
+    #[serde(default = "default_structured_logging")]
+    pub structured: bool,
+
+    /// Log output destinations
+    #[serde(default)]
+    pub sinks: Vec<LogSinkConfig>,
+
+    /// Enable sensitive data redaction
+    #[serde(default = "default_redaction_enabled")]
+    pub redaction_enabled: bool,
+
+    /// Log sampling rate (0.0 to 1.0) - 1.0 means log everything
+    #[serde(default = "default_log_sampling_rate")]
+    pub sampling_rate: f64,
+}
+
+fn default_log_level() -> String {
+    "INFO".to_string()
+}
+
+fn default_log_format() -> String {
+    "json".to_string()
+}
+
+fn default_structured_logging() -> bool {
+    true
+}
+
+fn default_redaction_enabled() -> bool {
+    true
+}
+
+fn default_log_sampling_rate() -> f64 {
+    1.0
+}
+
+/// Log sink configuration for different log destinations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogSinkConfig {
+    /// Sink type: stdout, file, elasticsearch, cloudwatch, splunk
+    #[serde(rename = "type")]
+    pub sink_type: String,
+
+    /// Enable this sink
+    #[serde(default = "default_sink_enabled")]
+    pub enabled: bool,
+
+    /// Minimum log level for this sink
+    #[serde(default)]
+    pub min_level: Option<String>,
+
+    /// Elasticsearch configuration (if type = "elasticsearch")
+    #[serde(default)]
+    pub elasticsearch: Option<ElasticsearchConfig>,
+
+    /// CloudWatch configuration (if type = "cloudwatch")
+    #[serde(default)]
+    pub cloudwatch: Option<CloudWatchConfig>,
+
+    /// Splunk configuration (if type = "splunk")
+    #[serde(default)]
+    pub splunk: Option<SplunkConfig>,
+
+    /// File configuration (if type = "file")
+    #[serde(default)]
+    pub file: Option<FileLogConfig>,
+}
+
+fn default_sink_enabled() -> bool {
+    true
+}
+
+/// Elasticsearch logging configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ElasticsearchConfig {
+    /// Elasticsearch URL(s)
+    pub urls: Vec<String>,
+
+    /// Index name pattern (supports date formatting like "gateway-logs-%Y.%m.%d")
+    pub index: String,
+
+    /// Bulk batch size
+    #[serde(default = "default_es_batch_size")]
+    pub batch_size: usize,
+
+    /// Flush interval in seconds
+    #[serde(default = "default_es_flush_interval")]
+    pub flush_interval_secs: u64,
+
+    /// Authentication (optional)
+    #[serde(default)]
+    pub username: Option<String>,
+
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+fn default_es_batch_size() -> usize {
+    100
+}
+
+fn default_es_flush_interval() -> u64 {
+    5
+}
+
+/// AWS CloudWatch Logs configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudWatchConfig {
+    /// AWS Region
+    pub region: String,
+
+    /// Log group name
+    pub log_group: String,
+
+    /// Log stream name (supports templating with {hostname}, {instance_id})
+    pub log_stream: String,
+
+    /// Batch size
+    #[serde(default = "default_cw_batch_size")]
+    pub batch_size: usize,
+
+    /// Flush interval in seconds
+    #[serde(default = "default_cw_flush_interval")]
+    pub flush_interval_secs: u64,
+}
+
+fn default_cw_batch_size() -> usize {
+    100
+}
+
+fn default_cw_flush_interval() -> u64 {
+    5
+}
+
+/// Splunk HEC (HTTP Event Collector) configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplunkConfig {
+    /// Splunk HEC endpoint URL
+    pub endpoint: String,
+
+    /// HEC token
+    pub token: String,
+
+    /// Source type
+    #[serde(default = "default_splunk_sourcetype")]
+    pub sourcetype: String,
+
+    /// Index (optional)
+    #[serde(default)]
+    pub index: Option<String>,
+
+    /// Batch size
+    #[serde(default = "default_splunk_batch_size")]
+    pub batch_size: usize,
+
+    /// Flush interval in seconds
+    #[serde(default = "default_splunk_flush_interval")]
+    pub flush_interval_secs: u64,
+}
+
+fn default_splunk_sourcetype() -> String {
+    "api_gateway".to_string()
+}
+
+fn default_splunk_batch_size() -> usize {
+    100
+}
+
+fn default_splunk_flush_interval() -> u64 {
+    5
+}
+
+/// File logging configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileLogConfig {
+    /// Log file path
+    pub path: PathBuf,
+
+    /// Enable log rotation
+    #[serde(default = "default_rotation_enabled")]
+    pub rotation_enabled: bool,
+
+    /// Max file size in MB before rotation
+    #[serde(default = "default_max_file_size_mb")]
+    pub max_size_mb: u64,
+
+    /// Max number of rotated files to keep
+    #[serde(default = "default_max_backups")]
+    pub max_backups: usize,
+
+    /// Max age of logs in days
+    #[serde(default = "default_max_age_days")]
+    pub max_age_days: u64,
+}
+
+fn default_rotation_enabled() -> bool {
+    true
+}
+
+fn default_max_file_size_mb() -> u64 {
+    100
+}
+
+fn default_max_backups() -> usize {
+    10
+}
+
+fn default_max_age_days() -> u64 {
+    30
+}
+
+/// Observability configuration for operational readiness
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObservabilityConfig {
+    /// Enable Prometheus metrics export
+    #[serde(default = "default_metrics_enabled")]
+    pub metrics_enabled: bool,
+
+    /// Metrics export port
+    #[serde(default = "default_metrics_port")]
+    pub metrics_port: u16,
+
+    /// Health check configuration
+    #[serde(default)]
+    pub health_checks: Option<HealthCheckConfig>,
+
+    /// Distributed tracing configuration
+    #[serde(default)]
+    pub tracing: Option<TracingConfig>,
+}
+
+fn default_metrics_enabled() -> bool {
+    true
+}
+
+fn default_metrics_port() -> u16 {
+    9090
+}
+
+/// Health check endpoint configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthCheckConfig {
+    /// Enable liveness check
+    #[serde(default = "default_health_enabled")]
+    pub liveness_enabled: bool,
+
+    /// Enable readiness check
+    #[serde(default = "default_health_enabled")]
+    pub readiness_enabled: bool,
+
+    /// Check Redis connectivity in readiness probe
+    #[serde(default = "default_check_redis")]
+    pub check_redis: bool,
+
+    /// Check upstream connectivity in readiness probe
+    #[serde(default)]
+    pub check_upstreams: bool,
+}
+
+fn default_health_enabled() -> bool {
+    true
+}
+
+fn default_check_redis() -> bool {
+    true
+}
+
+/// Distributed tracing configuration (OpenTelemetry)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TracingConfig {
+    /// Enable tracing
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Tracing backend (jaeger, zipkin, otlp)
+    pub backend: String,
+
+    /// Endpoint URL
+    pub endpoint: String,
+
+    /// Service name
+    #[serde(default = "default_service_name")]
+    pub service_name: String,
+
+    /// Sampling rate (0.0 to 1.0)
+    #[serde(default = "default_tracing_sampling_rate")]
+    pub sampling_rate: f64,
+}
+
+fn default_service_name() -> String {
+    "api-gateway".to_string()
+}
+
+fn default_tracing_sampling_rate() -> f64 {
+    0.1
 }
 
 impl Config {
