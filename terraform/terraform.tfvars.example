@@ -1,0 +1,105 @@
+# ========================================
+# API Gateway Rust - Terraform Variables
+# Copy this file to terraform.tfvars and fill in your values
+# ========================================
+
+# ========================================
+# General Configuration
+# ========================================
+
+aws_region  = "us-east-1"  # Change to your preferred region
+environment = "dev"        # dev, staging, or prod
+cost_center = "engineering"
+
+# ========================================
+# Lambda Configuration
+# ========================================
+
+lambda_memory_mb    = 512   # Start small, increase if needed (128-10240)
+lambda_timeout_secs = 30    # Maximum execution time
+
+# Optional: Limit concurrent executions (null = no limit)
+# lambda_reserved_concurrent_executions = 10
+
+lambda_image_tag = "latest"  # Docker image tag
+
+# ========================================
+# API Gateway Configuration
+# ========================================
+
+# Throttling limits (default: 5000 burst, 2000 req/sec)
+api_throttle_burst_limit = 5000
+api_throttle_rate_limit  = 2000
+
+# CORS configuration
+enable_cors         = true
+cors_allow_origins  = ["*"]  # Restrict in production: ["https://app.example.com"]
+cors_allow_methods  = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+cors_allow_headers  = ["Content-Type", "Authorization", "X-Correlation-ID"]
+
+# ========================================
+# DynamoDB Configuration
+# ========================================
+
+# On-demand billing (recommended for variable/low traffic)
+dynamodb_on_demand = true
+
+# Provisioned capacity (if dynamodb_on_demand = false)
+# rate_limit_read_capacity  = 5
+# rate_limit_write_capacity = 5
+# session_read_capacity     = 5
+# session_write_capacity    = 5
+
+# ========================================
+# Logging Configuration
+# ========================================
+
+log_retention_days = 7    # CloudWatch Logs retention (1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, etc.)
+rust_log_level     = "info"  # error, warn, info, debug, trace
+
+# ========================================
+# Gateway Application Configuration
+# ========================================
+
+gateway_request_timeout_secs = 30
+
+# JWT Authentication
+# WARNING: In production, load jwt_secret from AWS Secrets Manager!
+jwt_algorithm = "HS256"  # HS256, RS256, or ES256
+jwt_secret    = "your-secret-key-here-minimum-256-bits-long-for-security"  # CHANGE THIS!
+jwt_issuer    = "https://auth.example.com"  # Optional: JWT issuer validation
+jwt_audience  = "api-gateway"               # Optional: JWT audience validation
+jwt_cookie_name = "session_token"
+
+# Upstream Services
+# Replace with actual Lambda Function URLs or external API endpoints
+upstream_user_service_url    = "https://example.com/users"
+upstream_product_service_url = "https://example.com/products"
+upstream_order_service_url   = "https://example.com/orders"
+
+# ========================================
+# Custom Domain (Optional)
+# ========================================
+
+# Set to true to enable custom domain with ACM certificate
+enable_custom_domain = false
+
+# If enable_custom_domain = true, provide:
+# custom_domain_name      = "api.example.com"
+# acm_certificate_arn     = "arn:aws:acm:us-east-1:123456789012:certificate/abc-def-ghi"
+# route53_hosted_zone_id  = "Z1234567890ABC"
+
+# ========================================
+# Example Production Configuration
+# ========================================
+
+# For production deployment, consider:
+# - environment = "prod"
+# - lambda_memory_mb = 1024
+# - log_retention_days = 30
+# - dynamodb_on_demand = true (or provision with auto-scaling)
+# - enable_custom_domain = true
+# - Load jwt_secret from AWS Secrets Manager
+# - Restrict cors_allow_origins to your domain
+# - Set api_throttle_rate_limit based on expected traffic
+# - Enable point-in-time recovery for DynamoDB (in module)
