@@ -209,3 +209,104 @@ auth:
 #     # - "user_endpoint": Composite (user + endpoint)
 #     # - "ip_endpoint": Composite (IP + endpoint)
 #     key_type: "ip"
+
+# Logging configuration (optional - if not provided, logs to stdout with INFO level)
+logging:
+  # Log level (ERROR, WARN, INFO, DEBUG, TRACE)
+  level: "INFO"
+
+  # Log format (json, text)
+  format: "json"
+
+  # Enable structured JSON logging
+  structured: true
+
+  # Enable sensitive data redaction
+  redaction_enabled: true
+
+  # Log sampling rate (0.0 to 1.0) - 1.0 means log everything
+  sampling_rate: 1.0
+
+  # Log output destinations (can configure multiple sinks)
+  sinks:
+    # Standard output (default)
+    - type: stdout
+      enabled: true
+      min_level: INFO
+
+    # File logging with rotation
+    # - type: file
+    #   enabled: true
+    #   min_level: INFO
+    #   file:
+    #     path: "/var/log/api-gateway/gateway.log"
+    #     rotation_enabled: true
+    #     max_size_mb: 100
+    #     max_backups: 10
+    #     max_age_days: 30
+
+    # Elasticsearch logging
+    # - type: elasticsearch
+    #   enabled: true
+    #   min_level: INFO
+    #   elasticsearch:
+    #     urls:
+    #       - "https://elasticsearch.example.com:9200"
+    #     index: "api-gateway-logs-%Y.%m.%d"
+    #     batch_size: 100
+    #     flush_interval_secs: 5
+    #     username: "gateway_logger"
+    #     password: "${ELASTICSEARCH_PASSWORD}"
+
+    # AWS CloudWatch Logs
+    # - type: cloudwatch
+    #   enabled: true
+    #   min_level: INFO
+    #   cloudwatch:
+    #     region: "us-east-1"
+    #     log_group: "/aws/api-gateway/production"
+    #     log_stream: "gateway-{instance_id}"
+    #     batch_size: 100
+    #     flush_interval_secs: 5
+
+    # Splunk HEC (HTTP Event Collector)
+    # - type: splunk
+    #   enabled: true
+    #   min_level: INFO
+    #   splunk:
+    #     endpoint: "https://splunk.example.com:8088/services/collector"
+    #     token: "${SPLUNK_HEC_TOKEN}"
+    #     sourcetype: "api_gateway"
+    #     index: "production"
+    #     batch_size: 100
+    #     flush_interval_secs: 5
+
+# Observability configuration (optional - for operational readiness)
+observability:
+  # Enable Prometheus metrics export
+  metrics_enabled: true
+
+  # Metrics export port (default: 9090)
+  metrics_port: 9090
+
+  # Health check configuration
+  health_checks:
+    # Enable liveness check endpoint (/health/live)
+    liveness_enabled: true
+
+    # Enable readiness check endpoint (/health/ready)
+    readiness_enabled: true
+
+    # Check Redis connectivity in readiness probe
+    check_redis: true
+
+    # Check upstream connectivity in readiness probe
+    check_upstreams: false
+
+  # Distributed tracing configuration (OpenTelemetry)
+  # tracing:
+  #   enabled: true
+  #   backend: "jaeger"  # jaeger, zipkin, or otlp
+  #   endpoint: "http://jaeger-collector:14268/api/traces"
+  #   service_name: "api-gateway"
+  #   sampling_rate: 0.1  # Sample 10% of requests
